@@ -1,0 +1,172 @@
+@page "/display"
+@layout ConferenceAssistant.Web.Components.Layout.DisplayLayout
+@using ConferenceAssistant.Core.Models
+@using ConferenceAssistant.Core.Services
+@inject ISessionService SessionService
+@inject IPollService PollService
+@inject IInsightService InsightService
+@rendermode InteractiveServer
+
+<PageTitle>Conference Pulse — Display</PageTitle>
+
+<div class="display-page">
+    @if (session is null || session.Status == SessionStatus.Setup)
+    {
+        <div class="display-waiting">
+            <h1>🎯 Conference Pulse</h1>
+            <p>Waiting for session to begin...</p>
+        </div>
+    }
+    else
+    {
+        <!-- Header Bar -->
+        <div class="display-header">
+            <span class="header-title">@session.Title</span>
+            @if (activeTopic is not null)
+            {
+                <span class="header-topic">📍 @activeTopic.Title</span>
+            }
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="display-content">
+            <!-- Left: Poll Results -->
+            <div class="display-main">
+                @if (activePoll is not null)
+                {
+                    <PollResultsChart Poll="@activePoll" Results="@pollResults" />
+                }
+                else if (latestInsight is not null)
+                {
+                    <div class="display-insight">
+                        <InsightCard Insight="@latestInsight" />
+                    </div>
+                }
+                else
+                {
+                    <div class="display-idle">
+                        <CascadeVisualization Events="@cascadeEvents" />
+                    </div>
+                }
+            </div>
+
+            <!-- Right: Cascade + Insights -->
+            <div class="display-sidebar">
+                <CascadeVisualization Events="@cascadeEvents" />
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ConferenceSession? session;
+    private SessionTopic? activeTopic;
+    private Poll? activePoll;
+    private Dictionary<string, int>? pollResults;
+    private Insight? latestInsight;
+    private IReadOnlyList<CascadeEvent> cascadeEvents = [];
+
+    protected override void OnInitialized()
+    {
+        session = SessionService.CurrentSession;
+        RefreshState();
+
+        PollService.PollActivated += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        PollService.PollClosed += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        PollService.ResponseReceived += _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
+    }
+
+    private void RefreshState()
+    {
+        session = SessionService.CurrentSession;
+        activeTopic = SessionService.GetActiveTopic();
+        activePoll = PollService.GetActivePoll();
+        RefreshPollResults();
+
+        var insights = InsightService.GetAllInsights();
+        latestInsight = insights.Count > 0 ? insights[^1] : null;
+    }
+
+    private void RefreshPollResults()
+    {
+        if (activePoll is not null)
+            pollResults = PollService.GetPollResults(activePoll.Id);
+    }
+}
+
+<style>
+    .display-page {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .display-waiting {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .display-waiting h1 {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .display-waiting p {
+        font-size: 1.5rem;
+        opacity: 0.5;
+    }
+
+    .display-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 2rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .header-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+    }
+
+    .header-topic {
+        font-size: 1.1rem;
+        color: #e94560;
+    }
+
+    .display-content {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 350px;
+        gap: 1rem;
+        padding: 2rem;
+        overflow: hidden;
+    }
+
+    .display-main {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .display-insight {
+        max-width: 800px;
+        width: 100%;
+    }
+
+    .display-idle {
+        text-align: center;
+        opacity: 0.3;
+    }
+
+    .display-sidebar {
+        overflow-y: auto;
+        border-left: 1px solid rgba(255, 255, 255, 0.05);
+        padding-left: 1rem;
+    }
+</style>

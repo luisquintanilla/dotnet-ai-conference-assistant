@@ -1,0 +1,206 @@
+@page "/session/{SessionId}"
+@layout ConferenceAssistant.Web.Components.Layout.SessionLayout
+@using ConferenceAssistant.Core.Models
+@using ConferenceAssistant.Core.Services
+@inject ISessionService SessionService
+@inject IPollService PollService
+@inject IQuestionService QuestionService
+@rendermode InteractiveServer
+
+<PageTitle>Conference Pulse — Live</PageTitle>
+
+<div class="session-page">
+    @if (session is null)
+    {
+        <div class="waiting">
+            <p>⏳ Waiting for session to start...</p>
+        </div>
+    }
+    else if (session.Status == SessionStatus.Setup)
+    {
+        <div class="waiting">
+            <h2>@session.Title</h2>
+            <p>⏳ Session hasn't started yet. Hang tight!</p>
+        </div>
+    }
+    else
+    {
+        <!-- Current Topic -->
+        @if (activeTopic is not null)
+        {
+            <div class="current-topic">
+                <TopicBadge Topic="@activeTopic" />
+            </div>
+        }
+
+        <!-- Active Poll -->
+        @if (activePoll is not null)
+        {
+            <PollCard Poll="@activePoll" Results="@pollResults" OnVoteSubmitted="HandleVote" />
+        }
+        else
+        {
+            <div class="no-poll">
+                <p>🎤 Listening... Next poll coming soon.</p>
+            </div>
+        }
+
+        <!-- Ask a Question -->
+        <div class="question-form">
+            <h3>❓ Ask a Question</h3>
+            <div class="input-group">
+                <input type="text" @bind="newQuestion" @bind:event="oninput"
+                       placeholder="Type your question..."
+                       @onkeydown="HandleQuestionKeydown" />
+                <button class="btn-send" @onclick="SubmitQuestion" disabled="@string.IsNullOrWhiteSpace(newQuestion)">
+                    Send
+                </button>
+            </div>
+        </div>
+
+        <!-- Top Questions -->
+        @if (questions.Count > 0)
+        {
+            <div class="questions-list">
+                <h3>🔥 Top Questions</h3>
+                @foreach (var q in questions)
+                {
+                    <QuestionCard Question="@q" OnUpvote="() => Upvote(q.Id)" />
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+
+    private ConferenceSession? session;
+    private SessionTopic? activeTopic;
+    private Poll? activePoll;
+    private Dictionary<string, int>? pollResults;
+    private IReadOnlyList<AudienceQuestion> questions = [];
+    private string newQuestion = "";
+    private string attendeeId = Guid.NewGuid().ToString()[..8];
+
+    protected override void OnInitialized()
+    {
+        session = SessionService.CurrentSession;
+        RefreshState();
+
+        PollService.PollActivated += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        PollService.PollClosed += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        PollService.ResponseReceived += _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
+    }
+
+    private void RefreshState()
+    {
+        session = SessionService.CurrentSession;
+        activeTopic = SessionService.GetActiveTopic();
+        activePoll = PollService.GetActivePoll();
+        RefreshPollResults();
+        questions = QuestionService.GetTopQuestions(10);
+    }
+
+    private void RefreshPollResults()
+    {
+        if (activePoll is not null)
+            pollResults = PollService.GetPollResults(activePoll.Id);
+    }
+
+    private async Task HandleVote(string option)
+    {
+        if (activePoll is null) return;
+        await PollService.SubmitResponseAsync(activePoll.Id, option, attendeeId);
+        RefreshPollResults();
+    }
+
+    private async Task SubmitQuestion()
+    {
+        if (string.IsNullOrWhiteSpace(newQuestion)) return;
+        await QuestionService.SubmitQuestionAsync(newQuestion, activeTopic?.Id, attendeeId);
+        newQuestion = "";
+        questions = QuestionService.GetTopQuestions(10);
+    }
+
+    private async Task Upvote(string questionId)
+    {
+        await QuestionService.UpvoteQuestionAsync(questionId);
+        questions = QuestionService.GetTopQuestions(10);
+    }
+
+    private async Task HandleQuestionKeydown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SubmitQuestion();
+    }
+}
+
+<style>
+    .session-page {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+
+    .waiting {
+        text-align: center;
+        padding: 3rem 1rem;
+        opacity: 0.7;
+    }
+
+    .waiting h2 { margin-bottom: 0.5rem; }
+
+    .current-topic { margin-bottom: 0.5rem; }
+
+    .no-poll {
+        text-align: center;
+        padding: 2rem;
+        opacity: 0.5;
+        font-size: 1.1rem;
+    }
+
+    .question-form {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 0.75rem;
+        padding: 1rem;
+    }
+
+    .question-form h3 {
+        margin: 0 0 0.75rem;
+        font-size: 1rem;
+    }
+
+    .input-group {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .input-group input {
+        flex: 1;
+        padding: 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.5rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        font-size: 1rem;
+    }
+
+    .input-group input::placeholder { color: rgba(255, 255, 255, 0.3); }
+
+    .btn-send {
+        padding: 0.75rem 1.25rem;
+        background: #e94560;
+        border: none;
+        border-radius: 0.5rem;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .btn-send:disabled { opacity: 0.3; cursor: default; }
+
+    .questions-list h3 {
+        margin: 0 0 0.75rem;
+        font-size: 1rem;
+    }
+</style>

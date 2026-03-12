@@ -1,0 +1,99 @@
+@page "/"
+
+<PageTitle>Conference Pulse</PageTitle>
+
+<div class="landing">
+    <div class="landing-hero">
+        <h1>🎯 Conference Pulse</h1>
+        <p>AI-Powered Conference Assistant</p>
+    </div>
+    <div class="landing-links">
+        <a href="/presenter" class="landing-card">
+            <span class="card-icon">🎤</span>
+            <span class="card-title">Presenter Dashboard</span>
+            <span class="card-desc">Control panel for the speaker</span>
+        </a>
+        <a href="/session/DOTNETAI-CONF" class="landing-card">
+            <span class="card-icon">📱</span>
+            <span class="card-title">Join Session</span>
+            <span class="card-desc">Audience participation view</span>
+        </a>
+        <a href="/display" class="landing-card">
+            <span class="card-icon">🖥️</span>
+            <span class="card-title">Projection Display</span>
+            <span class="card-desc">Big screen visualization</span>
+        </a>
+    </div>
+</div>
+
+<style>
+    .landing {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .landing-hero {
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+
+    .landing-hero h1 {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .landing-hero p {
+        font-size: 1.25rem;
+        opacity: 0.7;
+    }
+
+    .landing-links {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .landing-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 2rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+        text-decoration: none;
+        color: white;
+        width: 200px;
+        transition: all 0.3s ease;
+    }
+
+    .landing-card:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: #e94560;
+        transform: translateY(-4px);
+    }
+
+    .card-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .card-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+    }
+
+    .card-desc {
+        font-size: 0.8rem;
+        opacity: 0.6;
+        text-align: center;
+    }
+</style>
