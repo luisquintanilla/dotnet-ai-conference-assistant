@@ -16,6 +16,8 @@ public class SessionService : ISessionService
     public ConferenceSession? CurrentSession => _session;
 
     public event Action<string>? TopicActivated;
+    public event Action<string>? TopicCompleted;
+    public event Action? SessionEnded;
 
     public async Task LoadSessionAsync(string seedTopicsPath)
     {
@@ -100,6 +102,7 @@ public class SessionService : ISessionService
             }
         }
 
+        TopicCompleted?.Invoke(topicId);
         return Task.CompletedTask;
     }
 
@@ -120,6 +123,7 @@ public class SessionService : ISessionService
             session.ActiveTopicId = null;
         }
 
+        SessionEnded?.Invoke();
         return Task.CompletedTask;
     }
 

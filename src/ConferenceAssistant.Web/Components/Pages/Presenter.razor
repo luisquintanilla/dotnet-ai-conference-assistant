@@ -204,9 +204,28 @@
                                     </div>
                                     @if (!string.IsNullOrWhiteSpace(q.Answer))
                                     {
-                                        <div class="question-answer">
+                                        <div class="question-answer @(q.IsAiGenerated ? "ai-answer" : "")">
+                                            @if (q.IsAiGenerated)
+                                            {
+                                                <span class="ai-badge">🤖 AI</span>
+                                            }
                                             <strong>A:</strong> @q.Answer
                                         </div>
+                                        @if (q.IsAiGenerated)
+                                        {
+                                            @if (answeringQuestionId == q.Id)
+                                            {
+                                                <div class="answer-form">
+                                                    <input type="text" @bind="answerText" placeholder="Type your answer to replace AI..." />
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
+                                                    <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-override" @onclick="() => StartAnswering(q.Id)">✏️ Override</button>
+                                            }
+                                        }
                                     }
                                     else
                                     {
@@ -282,6 +301,10 @@
     private Action<PollResponse>? onResponseReceived;
     private Action<Poll>? onPollActivated;
     private Action<Poll>? onPollClosed;
+    private Action<AudienceQuestion>? onQuestionReceived;
+    private Action<AudienceQuestion>? onQuestionAnswered;
+    private Action<AudienceQuestion>? onQuestionUpvoted;
+    private Action<Insight>? onInsightGenerated;
 
     protected override async Task OnInitializedAsync()
     {
@@ -294,10 +317,18 @@
         onResponseReceived = _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
         onPollActivated = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
         onPollClosed = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        onQuestionReceived = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
+        onQuestionAnswered = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
+        onQuestionUpvoted = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
+        onInsightGenerated = _ => InvokeAsync(() => { RefreshInsights(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
 
         PollService.ResponseReceived += onResponseReceived;
         PollService.PollActivated += onPollActivated;
         PollService.PollClosed += onPollClosed;
+        QuestionService.QuestionReceived += onQuestionReceived;
+        QuestionService.QuestionAnswered += onQuestionAnswered;
+        QuestionService.QuestionUpvoted += onQuestionUpvoted;
+        InsightService.InsightGenerated += onInsightGenerated;
     }
 
     public void Dispose()
@@ -305,6 +336,10 @@
         PollService.ResponseReceived -= onResponseReceived;
         PollService.PollActivated -= onPollActivated;
         PollService.PollClosed -= onPollClosed;
+        QuestionService.QuestionReceived -= onQuestionReceived;
+        QuestionService.QuestionAnswered -= onQuestionAnswered;
+        QuestionService.QuestionUpvoted -= onQuestionUpvoted;
+        InsightService.InsightGenerated -= onInsightGenerated;
     }
 
     private void RefreshState()
@@ -350,6 +385,24 @@
     {
         if (activePoll is not null)
             activePollResults = PollService.GetPollResults(activePoll.Id);
+    }
+
+    private void RefreshQuestions()
+    {
+        if (activeTopic is not null)
+            topicQuestions = QuestionService.GetQuestionsForTopic(activeTopic.Id);
+    }
+
+    private void RefreshInsights()
+    {
+        if (activeTopic is not null)
+            topicInsights = InsightService.GetInsightsForTopic(activeTopic.Id);
+    }
+
+    private async void RefreshKnowledgeBaseCount()
+    {
+        try { knowledgeBaseCount = await SemanticSearchService.GetRecordCountAsync(); }
+        catch { /* swallow */ }
     }
 
     private async Task StartSession()
@@ -481,3 +534,41 @@
             topicQuestions = QuestionService.GetQuestionsForTopic(activeTopic.Id);
     }
 }
+
+<style>
+    .question-answer.ai-answer {
+        background: rgba(100, 100, 255, 0.1);
+        border-left: 3px solid rgba(100, 100, 255, 0.5);
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        margin-top: 0.25rem;
+    }
+
+    .ai-badge {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: rgba(100, 100, 255, 0.2);
+        color: #aab0ff;
+        padding: 0.1rem 0.4rem;
+        border-radius: 0.25rem;
+        margin-right: 0.4rem;
+    }
+
+    .btn-override {
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+        opacity: 0.6;
+        border: 1px dashed rgba(255, 255, 255, 0.2);
+        background: none;
+        color: white;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.25rem;
+        cursor: pointer;
+    }
+
+    .btn-override:hover {
+        opacity: 1;
+        border-color: #e94560;
+    }
+</style>

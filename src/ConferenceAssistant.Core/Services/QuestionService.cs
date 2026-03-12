@@ -9,6 +9,8 @@ public class QuestionService : IQuestionService
     private readonly object _upvoteLock = new();
 
     public event Action<AudienceQuestion>? QuestionReceived;
+    public event Action<AudienceQuestion>? QuestionAnswered;
+    public event Action<AudienceQuestion>? QuestionUpvoted;
 
     public Task<AudienceQuestion> SubmitQuestionAsync(string text, string? topicId = null, string? attendeeId = null)
     {
@@ -25,7 +27,7 @@ public class QuestionService : IQuestionService
         return Task.FromResult(question);
     }
 
-    public Task<AudienceQuestion?> AnswerQuestionAsync(string questionId, string answer)
+    public Task<AudienceQuestion?> AnswerQuestionAsync(string questionId, string answer, bool isAiGenerated = false)
     {
         if (!_questions.TryGetValue(questionId, out var question))
         {
@@ -33,6 +35,9 @@ public class QuestionService : IQuestionService
         }
 
         question.Answer = answer;
+        question.IsAiGenerated = isAiGenerated;
+
+        QuestionAnswered?.Invoke(question);
         return Task.FromResult<AudienceQuestion?>(question);
     }
 
@@ -44,6 +49,8 @@ public class QuestionService : IQuestionService
             {
                 question.Upvotes++;
             }
+
+            QuestionUpvoted?.Invoke(question);
         }
 
         return Task.CompletedTask;

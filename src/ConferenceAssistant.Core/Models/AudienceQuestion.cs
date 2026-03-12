@@ -6,6 +6,7 @@ public class AudienceQuestion
     public string Text { get; set; } = "";
     public string? TopicId { get; set; }
     public string? Answer { get; set; }
+    public bool IsAiGenerated { get; set; }
     public string? AttendeeId { get; set; }
     public int Upvotes { get; set; }
     public DateTimeOffset AskedAt { get; set; } = DateTimeOffset.UtcNow;

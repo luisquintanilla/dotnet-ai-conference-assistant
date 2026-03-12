@@ -5,6 +5,7 @@
 @inject ISessionService SessionService
 @inject IPollService PollService
 @inject IQuestionService QuestionService
+@implements IDisposable
 @rendermode InteractiveServer
 
 <PageTitle>Conference Pulse — Live</PageTitle>
@@ -83,14 +84,42 @@
     private string newQuestion = "";
     private string attendeeId = Guid.NewGuid().ToString()[..8];
 
+    // Event handler references for cleanup
+    private Action<Poll>? onPollActivated;
+    private Action<Poll>? onPollClosed;
+    private Action<PollResponse>? onResponseReceived;
+    private Action<AudienceQuestion>? onQuestionReceived;
+    private Action<AudienceQuestion>? onQuestionAnswered;
+    private Action<AudienceQuestion>? onQuestionUpvoted;
+
     protected override void OnInitialized()
     {
         session = SessionService.CurrentSession;
         RefreshState();
 
-        PollService.PollActivated += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
-        PollService.PollClosed += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
-        PollService.ResponseReceived += _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
+        onPollActivated = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        onPollClosed = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        onResponseReceived = _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
+        onQuestionReceived = _ => InvokeAsync(() => { questions = QuestionService.GetTopQuestions(10); StateHasChanged(); });
+        onQuestionAnswered = _ => InvokeAsync(() => { questions = QuestionService.GetTopQuestions(10); StateHasChanged(); });
+        onQuestionUpvoted = _ => InvokeAsync(() => { questions = QuestionService.GetTopQuestions(10); StateHasChanged(); });
+
+        PollService.PollActivated += onPollActivated;
+        PollService.PollClosed += onPollClosed;
+        PollService.ResponseReceived += onResponseReceived;
+        QuestionService.QuestionReceived += onQuestionReceived;
+        QuestionService.QuestionAnswered += onQuestionAnswered;
+        QuestionService.QuestionUpvoted += onQuestionUpvoted;
+    }
+
+    public void Dispose()
+    {
+        PollService.PollActivated -= onPollActivated;
+        PollService.PollClosed -= onPollClosed;
+        PollService.ResponseReceived -= onResponseReceived;
+        QuestionService.QuestionReceived -= onQuestionReceived;
+        QuestionService.QuestionAnswered -= onQuestionAnswered;
+        QuestionService.QuestionUpvoted -= onQuestionUpvoted;
     }
 
     private void RefreshState()

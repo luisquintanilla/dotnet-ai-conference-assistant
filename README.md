@@ -19,37 +19,34 @@ An interactive .NET conference assistant that runs as a live web app. No slides.
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (Preview)
-- Azure OpenAI or OpenAI API key
-- [.NET Aspire workload](https://learn.microsoft.com/dotnet/aspire/fundamentals/setup-tooling) (for the dashboard)
+- [.NET Aspire workload](https://learn.microsoft.com/dotnet/aspire/fundamentals/setup-tooling)
+- An Azure OpenAI resource with `chat` (e.g. gpt-4o) and `embedding` (e.g. text-embedding-3-small) deployments
+- Azure CLI logged in (`az login`) — authentication uses `DefaultAzureCredential`
 
 ## Quick Start
 
 ```bash
-# Clone and configure
+# Clone
 git clone https://github.com/your-org/dotnet-ai-conference-assistant.git
 cd dotnet-ai-conference-assistant
 
-# Set your AI provider credentials
-# Option A: Azure OpenAI
-export AI__Endpoint="https://your-resource.openai.azure.com/"
-export AI__ApiKey="your-api-key"
-export AI__ChatModel="gpt-4o"
-export AI__EmbeddingModel="text-embedding-3-small"
+# Set user secrets (one-time)
+cd src/ConferenceAssistant.AppHost
+dotnet user-secrets set "AzureOpenAI:Name" "your-openai-resource-name"
+dotnet user-secrets set "AzureOpenAI:ResourceGroup" "your-resource-group"
+cd ../..
 
-# Option B: OpenAI (omit Endpoint)
-export AI__ApiKey="sk-..."
+# Ensure you're logged in to Azure
+az login
 
 # Run with Aspire
-dotnet run --project src/ConferenceAssistant.AppHost
-
-# Or run the web app directly
-dotnet run --project src/ConferenceAssistant.Web
+aspire run
 ```
 
-Open the three views:
+Open the three views (port shown in Aspire dashboard):
 - **`/presenter`** — Speaker dashboard (laptop)
 - **`/display`** — Projection view (big screen)
-- **`/session/AICONF`** — Attendee participation (audience phones via QR code)
+- **`/session/DOTNETAI-CONF`** — Attendee participation (audience phones via QR code)
 
 ## Architecture
 
@@ -101,7 +98,8 @@ docs/
 ├── plan.md                           # Master plan
 ├── architecture.md                   # Technical architecture
 ├── implementation-spec.md            # Implementation specification
-└── session-outline.md                # Presentation flow
+├── session-outline.md                # Presentation flow
+└── smoke-test.md                     # Setup & testing guide
 ```
 
 ## MCP Server
@@ -122,28 +120,31 @@ The app exposes an MCP server at `/mcp` with these tools:
 ### Copilot CLI Integration
 
 ```jsonc
-// Add to your MCP config (e.g., ~/.config/github-copilot/mcp.json)
+// .vscode/mcp.json (included in the repo's .gitignore)
 {
   "servers": {
-    "conference-pulse": {
-      "url": "https://localhost:5001/mcp"
+    "ConferencePulse": {
+      "type": "http",
+      "url": "https://localhost:7231/mcp"
     }
   }
 }
 ```
 
+> ⚠️ Port may vary — check the Aspire dashboard for the actual web endpoint.
+
 Then: `"Summarize this session including all poll results and key themes"`
 
 ## Configuration
 
-All settings via environment variables or `appsettings.json`:
+All AI configuration flows through **Aspire + user secrets** — no API keys in code or config files.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `AI:Endpoint` | — | Azure OpenAI endpoint (omit for direct OpenAI) |
-| `AI:ApiKey` | — | API key |
-| `AI:ChatModel` | `gpt-4o` | Chat completion model |
-| `AI:EmbeddingModel` | `text-embedding-3-small` | Embedding model |
+| User Secret | Description |
+|-------------|-------------|
+| `AzureOpenAI:Name` | Your Azure OpenAI resource name |
+| `AzureOpenAI:ResourceGroup` | Resource group containing the resource |
+
+Authentication uses `DefaultAzureCredential` (Azure CLI, managed identity, etc.). Azure OpenAI deployment names (`chat`, `embedding`) are configured in the AppHost.
 
 ## The Snowball Effect
 
