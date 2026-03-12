@@ -2,8 +2,11 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
 // Azure OpenAI — reference an existing resource via user secrets
-// Set with: dotnet user-secrets set "AzureOpenAI:Name" "<resource-name>"
-//           dotnet user-secrets set "AzureOpenAI:ResourceGroup" "<resource-group>"
+// Required user secrets (set in AppHost project):
+//   dotnet user-secrets set "Azure:SubscriptionId" "<subscription-id>"
+//   dotnet user-secrets set "Azure:Location" "eastus"
+//   dotnet user-secrets set "AzureOpenAI:Name" "<resource-name>"
+//   dotnet user-secrets set "AzureOpenAI:ResourceGroup" "<resource-group>"
 // ---------------------------------------------------------------------------
 var azOpenAiName = builder.AddParameterFromConfiguration("AzureOpenAIName", "AzureOpenAI:Name");
 var azOpenAiRg = builder.AddParameterFromConfiguration("AzureOpenAIResourceGroup", "AzureOpenAI:ResourceGroup");

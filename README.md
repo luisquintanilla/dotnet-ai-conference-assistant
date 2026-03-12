@@ -32,6 +32,12 @@ cd dotnet-ai-conference-assistant
 
 # Set user secrets (one-time)
 cd src/ConferenceAssistant.AppHost
+
+# Azure local provisioning (required by Aspire for Azure resources)
+dotnet user-secrets set "Azure:SubscriptionId" "your-azure-subscription-id"
+dotnet user-secrets set "Azure:Location" "eastus"
+
+# Azure OpenAI resource reference
 dotnet user-secrets set "AzureOpenAI:Name" "your-openai-resource-name"
 dotnet user-secrets set "AzureOpenAI:ResourceGroup" "your-resource-group"
 cd ../..
@@ -141,6 +147,8 @@ All AI configuration flows through **Aspire + user secrets** — no API keys in 
 
 | User Secret | Description |
 |-------------|-------------|
+| `Azure:SubscriptionId` | Your Azure subscription ID (Aspire local provisioning) |
+| `Azure:Location` | Azure region for provisioned resources (e.g. `eastus`) |
 | `AzureOpenAI:Name` | Your Azure OpenAI resource name |
 | `AzureOpenAI:ResourceGroup` | Resource group containing the resource |
 

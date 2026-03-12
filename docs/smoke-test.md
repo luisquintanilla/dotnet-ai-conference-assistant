@@ -35,6 +35,11 @@ You need an **existing** Azure OpenAI resource with **two deployments**:
 ```powershell
 cd C:\Dev\dotnet-ai-conference-assistant\src\ConferenceAssistant.AppHost
 
+# --- Azure local provisioning (required by Aspire for any Azure resource) ---
+dotnet user-secrets set "Azure:SubscriptionId" "<your-azure-subscription-id>"
+dotnet user-secrets set "Azure:Location" "eastus"
+
+# --- Azure OpenAI resource reference ---
 # Your Azure OpenAI resource name (not the full URL — just the name)
 dotnet user-secrets set "AzureOpenAI:Name" "my-openai-resource"
 
@@ -42,9 +47,19 @@ dotnet user-secrets set "AzureOpenAI:Name" "my-openai-resource"
 dotnet user-secrets set "AzureOpenAI:ResourceGroup" "my-resource-group"
 ```
 
-Aspire reads these via `AddParameterFromConfiguration` → passes them to
-`RunAsExisting` → resolves the endpoint → injects the connection string into
-the web project automatically.
+> 💡 **Find your subscription ID:** `az account show --query id -o tsv`
+
+| Secret | Description | Example |
+|--------|-------------|---------|
+| `Azure:SubscriptionId` | Your Azure subscription ID (Aspire local provisioning) | `12345678-abcd-...` |
+| `Azure:Location` | Azure region for provisioned resources | `eastus` |
+| `AzureOpenAI:Name` | Your Azure OpenAI resource name | `my-openai-resource` |
+| `AzureOpenAI:ResourceGroup` | Resource group containing the AOAI resource | `my-rg` |
+
+Aspire reads the `Azure:*` secrets for local provisioning context, and the
+`AzureOpenAI:*` secrets via `AddParameterFromConfiguration` → `RunAsExisting`
+→ resolves the endpoint → injects the connection string into the web project
+automatically.
 
 **No API keys in config!** Aspire uses `DefaultAzureCredential` (your Azure
 CLI login, managed identity, etc.). Make sure you're logged in:
