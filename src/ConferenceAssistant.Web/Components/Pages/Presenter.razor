@@ -311,6 +311,7 @@
     private Action<AudienceQuestion>? onQuestionAnswered;
     private Action<AudienceQuestion>? onQuestionUpvoted;
     private Action<Insight>? onInsightGenerated;
+    private Timer? _knowledgeBaseTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -322,9 +323,9 @@
 
         onResponseReceived = _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
         onPollActivated = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
-        onPollClosed = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
-        onQuestionReceived = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
-        onQuestionAnswered = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
+        onPollClosed = _ => InvokeAsync(() => { RefreshState(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
+        onQuestionReceived = _ => InvokeAsync(() => { RefreshQuestions(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
+        onQuestionAnswered = _ => InvokeAsync(() => { RefreshQuestions(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
         onQuestionUpvoted = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
         onInsightGenerated = _ => InvokeAsync(() => { RefreshInsights(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
 
@@ -335,10 +336,16 @@
         QuestionService.QuestionAnswered += onQuestionAnswered;
         QuestionService.QuestionUpvoted += onQuestionUpvoted;
         InsightService.InsightGenerated += onInsightGenerated;
+
+        // Periodic refresh of knowledge base count (catches background ingestion)
+        _knowledgeBaseTimer = new Timer(_ =>
+            InvokeAsync(() => { RefreshKnowledgeBaseCount(); StateHasChanged(); }),
+            null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     public void Dispose()
     {
+        _knowledgeBaseTimer?.Dispose();
         PollService.ResponseReceived -= onResponseReceived;
         PollService.PollActivated -= onPollActivated;
         PollService.PollClosed -= onPollClosed;
