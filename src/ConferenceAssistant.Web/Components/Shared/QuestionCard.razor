@@ -7,19 +7,22 @@
     </button>
     <div class="question-body">
         <p class="question-text">@Question.Text</p>
-        @if (!string.IsNullOrEmpty(Question.Answer))
+        @if (Question.Answers.Count > 0)
         {
-            <div class="question-answer @(Question.IsAiGenerated ? "ai-generated" : "")">
-                @if (Question.IsAiGenerated)
-                {
-                    <span class="ai-badge">🤖 AI</span>
-                }
-                else
-                {
-                    <span class="human-badge">💬</span>
-                }
-                @Question.Answer
-            </div>
+            @foreach (var answer in Question.Answers)
+            {
+                <div class="question-answer @(answer.IsAiGenerated ? "ai-generated" : "")">
+                    @if (answer.IsAiGenerated)
+                    {
+                        <span class="ai-badge">🤖 AI</span>
+                    }
+                    else
+                    {
+                        <span class="human-badge">💬 @answer.AuthorLabel</span>
+                    }
+                    @answer.Text
+                </div>
+            }
         }
         <span class="question-time">@Question.AskedAt.ToString("HH:mm")</span>
     </div>
@@ -97,7 +100,15 @@
     }
 
     .human-badge {
-        margin-right: 0.25rem;
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: rgba(78, 205, 196, 0.2);
+        color: #4ecdc4;
+        padding: 0.1rem 0.4rem;
+        border-radius: 0.25rem;
+        margin-right: 0.4rem;
+        vertical-align: middle;
     }
 
     .question-time {

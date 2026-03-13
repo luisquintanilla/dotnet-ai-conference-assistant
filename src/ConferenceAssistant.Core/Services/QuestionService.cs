@@ -27,15 +27,19 @@ public class QuestionService : IQuestionService
         return Task.FromResult(question);
     }
 
-    public Task<AudienceQuestion?> AnswerQuestionAsync(string questionId, string answer, bool isAiGenerated = false)
+    public Task<AudienceQuestion?> AnswerQuestionAsync(string questionId, string answer, bool isAiGenerated = false, string authorLabel = "Presenter")
     {
         if (!_questions.TryGetValue(questionId, out var question))
         {
             return Task.FromResult<AudienceQuestion?>(null);
         }
 
-        question.Answer = answer;
-        question.IsAiGenerated = isAiGenerated;
+        question.Answers.Add(new Models.QuestionAnswer
+        {
+            Text = answer,
+            IsAiGenerated = isAiGenerated,
+            AuthorLabel = isAiGenerated ? "AI" : authorLabel
+        });
 
         QuestionAnswered?.Invoke(question);
         return Task.FromResult<AudienceQuestion?>(question);

@@ -9,6 +9,7 @@
 @inject IInsightService InsightService
 @inject IQuestionService QuestionService
 @inject ISemanticSearchService SemanticSearchService
+@inject IInsightGenerationService InsightGenerationService
 @rendermode InteractiveServer
 
 <PageTitle>Presenter Dashboard</PageTitle>
@@ -202,45 +203,34 @@
                                         <span class="upvote-count">👍 @q.Upvotes</span>
                                         <span class="question-text">@q.Text</span>
                                     </div>
-                                    @if (!string.IsNullOrWhiteSpace(q.Answer))
+                                    @if (q.Answers.Count > 0)
                                     {
-                                        <div class="question-answer @(q.IsAiGenerated ? "ai-answer" : "")">
-                                            @if (q.IsAiGenerated)
-                                            {
-                                                <span class="ai-badge">🤖 AI</span>
-                                            }
-                                            <strong>A:</strong> @q.Answer
-                                        </div>
-                                        @if (q.IsAiGenerated)
+                                        @foreach (var answer in q.Answers)
                                         {
-                                            @if (answeringQuestionId == q.Id)
-                                            {
-                                                <div class="answer-form">
-                                                    <input type="text" @bind="answerText" placeholder="Type your answer to replace AI..." />
-                                                    <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
-                                                    <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <button class="btn btn-sm btn-override" @onclick="() => StartAnswering(q.Id)">✏️ Override</button>
-                                            }
+                                            <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
+                                                @if (answer.IsAiGenerated)
+                                                {
+                                                    <span class="ai-badge">🤖 AI</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="human-badge">💬 @answer.AuthorLabel</span>
+                                                }
+                                                <strong>A:</strong> @answer.Text
+                                            </div>
                                         }
+                                    }
+                                    @if (answeringQuestionId == q.Id)
+                                    {
+                                        <div class="answer-form">
+                                            <input type="text" @bind="answerText" placeholder="Type your answer..." />
+                                            <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
+                                            <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                        </div>
                                     }
                                     else
                                     {
-                                        @if (answeringQuestionId == q.Id)
-                                        {
-                                            <div class="answer-form">
-                                                <input type="text" @bind="answerText" placeholder="Type your answer..." />
-                                                <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
-                                                <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Answer</button>
-                                        }
+                                        <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
                                     }
                                 </div>
                             }
@@ -258,6 +248,19 @@
             <!-- Insights Panel (right side) -->
             <div class="panel insights-panel">
                 <h2>💡 Insights</h2>
+                @if (activeTopic is not null)
+                {
+                    <button class="btn btn-sm btn-insight" @onclick="GenerateInsightsManually" disabled="@isGeneratingInsights">
+                        @if (isGeneratingInsights)
+                        {
+                            <span>⏳ Generating...</span>
+                        }
+                        else
+                        {
+                            <span>🔄 Generate Insights</span>
+                        }
+                    </button>
+                }
                 @if (topicInsights.Count == 0)
                 {
                     <p class="muted">No insights yet for this topic.</p>
@@ -296,6 +299,9 @@
     // Question answering
     private string? answeringQuestionId;
     private string answerText = "";
+
+    // Insight generation
+    private bool isGeneratingInsights;
 
     // Event handler references for cleanup
     private Action<PollResponse>? onResponseReceived;
@@ -533,6 +539,32 @@
         if (activeTopic is not null)
             topicQuestions = QuestionService.GetQuestionsForTopic(activeTopic.Id);
     }
+
+    private async Task GenerateInsightsManually()
+    {
+        if (activeTopic is null) return;
+        isGeneratingInsights = true;
+        StateHasChanged();
+
+        try
+        {
+            await InsightGenerationService.GenerateTopicInsightsAsync(activeTopic.Id);
+
+            // Also generate poll insights for any closed polls in this topic
+            var closedPolls = PollService.GetPollsForTopic(activeTopic.Id)
+                .Where(p => p.Status == PollStatus.Closed);
+            foreach (var p in closedPolls)
+            {
+                await InsightGenerationService.GeneratePollInsightsAsync(p.Id);
+            }
+        }
+        finally
+        {
+            isGeneratingInsights = false;
+            RefreshInsights();
+            StateHasChanged();
+        }
+    }
 }
 
 <style>
@@ -570,5 +602,37 @@
     .btn-override:hover {
         opacity: 1;
         border-color: #e94560;
+    }
+
+    .human-badge {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: rgba(78, 205, 196, 0.2);
+        color: #4ecdc4;
+        padding: 0.1rem 0.4rem;
+        border-radius: 0.25rem;
+        margin-right: 0.4rem;
+    }
+
+    .btn-insight {
+        font-size: 0.8rem;
+        margin-bottom: 0.75rem;
+        border: 1px solid rgba(255, 200, 0, 0.4);
+        background: rgba(255, 200, 0, 0.1);
+        color: #ffc800;
+        padding: 0.3rem 0.75rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+    }
+
+    .btn-insight:hover:not(:disabled) {
+        background: rgba(255, 200, 0, 0.2);
+        border-color: #ffc800;
+    }
+
+    .btn-insight:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 </style>

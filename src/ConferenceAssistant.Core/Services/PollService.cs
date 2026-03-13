@@ -70,6 +70,11 @@ public class PollService : IPollService
         return _polls.Values.FirstOrDefault(p => p.Status == PollStatus.Active);
     }
 
+    public Poll? GetPoll(string pollId)
+    {
+        return _polls.TryGetValue(pollId, out var poll) ? poll : null;
+    }
+
     public IReadOnlyList<Poll> GetPollsForTopic(string topicId)
     {
         return _polls.Values

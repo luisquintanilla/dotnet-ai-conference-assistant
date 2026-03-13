@@ -19,14 +19,15 @@ public class InsightGenerationService(
     {
         try
         {
+            var poll = pollService.GetPoll(pollId);
+            if (poll is null)
+            {
+                logger.LogError("Cannot generate poll insights: poll {PollId} not found", pollId);
+                return;
+            }
+
             var results = pollService.GetPollResults(pollId);
             if (results.Count == 0) return;
-
-            var responses = pollService.GetResponsesForPoll(pollId);
-            var polls = pollService.GetPollsForTopic(
-                sessionService.GetActiveTopic()?.Id ?? "");
-            var poll = polls.FirstOrDefault(p => p.Id == pollId);
-            if (poll is null) return;
 
             var sb = new StringBuilder();
             sb.AppendLine($"Poll: {poll.Question}");
@@ -67,7 +68,7 @@ public class InsightGenerationService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to generate poll insight for {PollId}", pollId);
+            logger.LogError(ex, "Failed to generate poll insight for {PollId}", pollId);
         }
     }
 
@@ -107,8 +108,15 @@ public class InsightGenerationService(
                 foreach (var q in questions.OrderByDescending(q => q.Upvotes).Take(10))
                 {
                     sb.AppendLine($"- [{q.Upvotes} votes] {q.Text}");
-                    if (!string.IsNullOrWhiteSpace(q.Answer))
-                        sb.AppendLine($"  Answer: {q.Answer}");
+                    var answers = q.Answers;
+                    if (answers.Count > 0)
+                    {
+                        foreach (var a in answers)
+                        {
+                            var badge = a.IsAiGenerated ? "[AI]" : "[Human]";
+                            sb.AppendLine($"  Answer {badge}: {a.Text}");
+                        }
+                    }
                 }
             }
 
@@ -148,7 +156,7 @@ public class InsightGenerationService(
             }
 
             // Also detect knowledge gaps from unanswered/highly-upvoted questions
-            var gapQuestions = questions.Where(q => q.Upvotes >= 2 || string.IsNullOrWhiteSpace(q.Answer)).ToList();
+            var gapQuestions = questions.Where(q => q.Upvotes >= 2 || q.Answers.Count == 0).ToList();
             if (gapQuestions.Count > 0)
             {
                 var gapPrompt = $"""
@@ -173,7 +181,7 @@ public class InsightGenerationService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to generate topic insights for {TopicId}", topicId);
+            logger.LogError(ex, "Failed to generate topic insights for {TopicId}", topicId);
         }
     }
 }

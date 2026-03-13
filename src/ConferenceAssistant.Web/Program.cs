@@ -157,9 +157,12 @@ questionService.QuestionAnswered += q =>
     {
         try
         {
-            var content = $"Q: {q.Text}\nA: {q.Answer}";
+            var latestAnswer = q.Answers.LastOrDefault();
+            if (latestAnswer is null) return;
+            var badge = latestAnswer.IsAiGenerated ? "[AI]" : "[Human]";
+            var content = $"Q: {q.Text}\nA {badge}: {latestAnswer.Text}";
             await ingestionService.IngestExternalContentAsync("qa", content);
-            app.Logger.LogInformation("Ingested Q&A pair into knowledge base");
+            app.Logger.LogInformation("Ingested Q&A pair into knowledge base ({Badge})", badge);
         }
         catch (Exception ex)
         {

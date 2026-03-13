@@ -154,8 +154,14 @@ public class ConferenceTools
             var q = questions[i];
             sb.AppendLine($"### {i + 1}. {q.Text}");
             sb.AppendLine($"👍 {q.Upvotes} upvotes | Asked at {q.AskedAt:HH:mm:ss}");
-            if (!string.IsNullOrEmpty(q.Answer))
-                sb.AppendLine($"**Answer:** {q.Answer}");
+            if (q.Answers.Count > 0)
+            {
+                foreach (var a in q.Answers)
+                {
+                    var badge = a.IsAiGenerated ? "🤖 AI" : $"💬 {a.AuthorLabel}";
+                    sb.AppendLine($"**Answer ({badge}):** {a.Text}");
+                }
+            }
             sb.AppendLine();
         }
 
@@ -323,8 +329,14 @@ public class ConferenceTools
             foreach (var q in topQuestions)
             {
                 sb.AppendLine($"- **{q.Text}** (👍 {q.Upvotes})");
-                if (!string.IsNullOrEmpty(q.Answer))
-                    sb.AppendLine($"  - *Answer: {q.Answer}*");
+                if (q.Answers.Count > 0)
+                {
+                    foreach (var a in q.Answers)
+                    {
+                        var badge = a.IsAiGenerated ? "AI" : a.AuthorLabel;
+                        sb.AppendLine($"  - *Answer [{badge}]: {a.Text}*");
+                    }
+                }
             }
             sb.AppendLine();
         }

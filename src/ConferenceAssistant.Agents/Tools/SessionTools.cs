@@ -85,8 +85,14 @@ public static class SessionTools
                     foreach (var q in questions)
                     {
                         sb.Append($"  - [{q.Upvotes} upvote(s)] {q.Text}");
-                        if (!string.IsNullOrEmpty(q.Answer))
-                            sb.Append($" → Answered: {q.Answer}");
+                        if (q.Answers.Count > 0)
+                        {
+                            foreach (var a in q.Answers)
+                            {
+                                var badge = a.IsAiGenerated ? "AI" : a.AuthorLabel;
+                                sb.Append($" → [{badge}]: {a.Text}");
+                            }
+                        }
                         sb.AppendLine();
                     }
                     return sb.ToString();

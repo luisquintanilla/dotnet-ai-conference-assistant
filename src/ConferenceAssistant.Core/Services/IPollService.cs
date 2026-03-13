@@ -13,6 +13,7 @@ public interface IPollService
     Task ClosePollAsync(string pollId);
     Task<PollResponse> SubmitResponseAsync(string pollId, string selectedOption, string? attendeeId = null);
     Poll? GetActivePoll();
+    Poll? GetPoll(string pollId);
     IReadOnlyList<Poll> GetPollsForTopic(string topicId);
     IReadOnlyList<PollResponse> GetResponsesForPoll(string pollId);
     Dictionary<string, int> GetPollResults(string pollId);
