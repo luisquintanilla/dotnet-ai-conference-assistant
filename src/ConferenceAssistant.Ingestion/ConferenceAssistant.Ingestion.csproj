@@ -5,6 +5,7 @@
     <PackageReference Include="Microsoft.Extensions.DataIngestion" />
     <PackageReference Include="Microsoft.Extensions.DataIngestion.Markdig" />
     <PackageReference Include="Microsoft.Extensions.VectorData.Abstractions" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" />
   </ItemGroup>
 

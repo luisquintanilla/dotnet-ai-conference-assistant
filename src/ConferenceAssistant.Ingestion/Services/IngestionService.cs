@@ -1,5 +1,8 @@
 using System.Text;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DataIngestion;
+using Microsoft.Extensions.Logging;
+using Microsoft.ML.Tokenizers;
 using ConferenceAssistant.Ingestion.Models;
 
 namespace ConferenceAssistant.Ingestion.Services;
@@ -8,40 +11,70 @@ public class IngestionService : IIngestionService
 {
     private readonly ISemanticSearchService _searchService;
     private readonly IChatClient _chatClient;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<IngestionService> _logger;
 
-    public IngestionService(ISemanticSearchService searchService, IChatClient chatClient)
+    public IngestionService(
+        ISemanticSearchService searchService,
+        IChatClient chatClient,
+        ILoggerFactory loggerFactory,
+        ILogger<IngestionService> logger)
     {
         _searchService = searchService;
         _chatClient = chatClient;
+        _loggerFactory = loggerFactory;
+        _logger = logger;
     }
 
     public async Task<int> IngestOutlineAsync(string markdownPath)
     {
-        var markdown = await File.ReadAllTextAsync(markdownPath);
-        var chunks = SplitMarkdownByHeadings(markdown);
-        var records = new List<ConferenceRecord>();
+        // 1. Reader — built-in Markdown reader from M.E.DataIngestion.Markdig
+        IngestionDocumentReader reader = new MarkdownReader();
 
-        foreach (var (heading, body) in chunks)
+        // 2. Chunker — header-based splitting with token limits
+        var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
+        var chunkerOptions = new IngestionChunkerOptions(tokenizer)
         {
-            if (string.IsNullOrWhiteSpace(body))
-                continue;
+            MaxTokensPerChunk = 500,
+            OverlapTokens = 50
+        };
+        IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
 
-            var content = string.IsNullOrEmpty(heading) ? body : $"{heading}\n{body}";
-            var summary = await GenerateSummaryAsync(content);
-            var keywords = await ExtractKeywordsAsync(content);
+        // 3. Writer — stores chunks in the vector store with auto-generated embeddings
+        using var writer = new VectorStoreWriter<string>(
+            _searchService.VectorStore,
+            dimensionCount: 1536,
+            new VectorStoreWriterOptions { CollectionName = "conference-knowledge" });
 
-            records.Add(new ConferenceRecord
+        // 4. Enrichers — AI-powered summary and keyword extraction
+        var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
+        var summaryEnricher = new SummaryEnricher(enricherOptions);
+        string[] keywords = [".NET", "AI", "Microsoft.Extensions.AI", "DataIngestion", "VectorData", "MCP", "Agents", "Aspire", "Copilot", "LLM", "embeddings"];
+        var keywordEnricher = new KeywordEnricher(enricherOptions, keywords);
+
+        // 5. Pipeline — compose reader → chunker → enrichers → writer
+        using IngestionPipeline<string> pipeline = new(reader, chunker, writer, new IngestionPipelineOptions(), _loggerFactory)
+        {
+            ChunkProcessors = { summaryEnricher, keywordEnricher }
+        };
+
+        // 6. Process the markdown file
+        int count = 0;
+        var dir = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(markdownPath))!);
+        var filename = Path.GetFileName(markdownPath);
+        await foreach (var result in pipeline.ProcessAsync(dir, filename))
+        {
+            if (result.Succeeded)
             {
-                Source = "outline",
-                TopicId = NormalizeTopicId(heading),
-                Content = content,
-                Summary = summary,
-                Keywords = keywords
-            });
+                count++;
+                _logger.LogInformation("Ingested document {DocId} via pipeline", result.DocumentId);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to process document {DocId}", result.DocumentId);
+            }
         }
-
-        await _searchService.UpsertBatchAsync(records);
-        return records.Count;
+        return count;
     }
 
     public async Task<int> IngestResponseAsync(
@@ -57,16 +90,12 @@ public class IngestionService : IIngestionService
             sb.AppendLine($"  - {option}: {count} votes ({percentage}%)");
         }
 
-        var content = sb.ToString();
-        var summary = await GenerateSummaryAsync(content);
-
         var record = new ConferenceRecord
         {
             Id = $"response-{pollId}",
             Source = "response",
             TopicId = topicId,
-            Content = content,
-            Summary = summary
+            Content = sb.ToString()
         };
 
         await _searchService.UpsertAsync(record);
@@ -75,16 +104,11 @@ public class IngestionService : IIngestionService
 
     public async Task<int> IngestInsightAsync(string topicId, string insightContent)
     {
-        var summary = await GenerateSummaryAsync(insightContent);
-        var keywords = await ExtractKeywordsAsync(insightContent);
-
         var record = new ConferenceRecord
         {
             Source = "insight",
             TopicId = topicId,
-            Content = insightContent,
-            Summary = summary,
-            Keywords = keywords
+            Content = insightContent
         };
 
         await _searchService.UpsertAsync(record);
@@ -93,85 +117,13 @@ public class IngestionService : IIngestionService
 
     public async Task<int> IngestExternalContentAsync(string source, string content)
     {
-        var summary = await GenerateSummaryAsync(content);
-        var keywords = await ExtractKeywordsAsync(content);
-
         var record = new ConferenceRecord
         {
             Source = source,
-            Content = content,
-            Summary = summary,
-            Keywords = keywords
+            Content = content
         };
 
         await _searchService.UpsertAsync(record);
         return 1;
-    }
-
-    private async Task<string> GenerateSummaryAsync(string content)
-    {
-        var response = await _chatClient.GetResponseAsync(
-            $"Summarize this content in 1-2 sentences:\n\n{content}");
-        return response.Text ?? string.Empty;
-    }
-
-    private async Task<List<string>> ExtractKeywordsAsync(string content)
-    {
-        var response = await _chatClient.GetResponseAsync(
-            $"Extract 3-5 keywords from this content. Return only the keywords separated by commas, nothing else:\n\n{content}");
-        var text = response.Text ?? string.Empty;
-        return text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList();
-    }
-
-    /// <summary>
-    /// Splits markdown content by ## and ### headings into (heading, body) chunks.
-    /// </summary>
-    private static List<(string Heading, string Body)> SplitMarkdownByHeadings(string markdown)
-    {
-        var chunks = new List<(string Heading, string Body)>();
-        var lines = markdown.Split('\n');
-        string currentHeading = "";
-        var currentBody = new StringBuilder();
-
-        foreach (var line in lines)
-        {
-            var trimmed = line.TrimStart();
-            if (trimmed.StartsWith("## ") || trimmed.StartsWith("### "))
-            {
-                // Save the previous chunk
-                if (currentBody.Length > 0 || !string.IsNullOrEmpty(currentHeading))
-                {
-                    chunks.Add((currentHeading, currentBody.ToString().Trim()));
-                }
-
-                currentHeading = trimmed.TrimStart('#', ' ');
-                currentBody.Clear();
-            }
-            else
-            {
-                currentBody.AppendLine(line);
-            }
-        }
-
-        // Add the last chunk
-        if (currentBody.Length > 0 || !string.IsNullOrEmpty(currentHeading))
-        {
-            chunks.Add((currentHeading, currentBody.ToString().Trim()));
-        }
-
-        return chunks;
-    }
-
-    private static string NormalizeTopicId(string heading)
-    {
-        if (string.IsNullOrWhiteSpace(heading))
-            return "general";
-
-        return heading
-            .ToLowerInvariant()
-            .Replace(' ', '-')
-            .Replace("--", "-")
-            .Trim('-');
     }
 }

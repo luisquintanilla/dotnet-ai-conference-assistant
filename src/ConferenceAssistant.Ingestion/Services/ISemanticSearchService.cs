@@ -1,4 +1,5 @@
 using ConferenceAssistant.Ingestion.Models;
+using Microsoft.Extensions.VectorData;
 
 namespace ConferenceAssistant.Ingestion.Services;
 
@@ -8,4 +9,5 @@ public interface ISemanticSearchService
     Task UpsertAsync(ConferenceRecord record);
     Task UpsertBatchAsync(IEnumerable<ConferenceRecord> records);
     Task<int> GetRecordCountAsync();
+    VectorStore VectorStore { get; }
 }

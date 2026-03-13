@@ -9,6 +9,7 @@ public class SemanticSearchService : ISemanticSearchService
 {
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly VectorStoreCollection<string, ConferenceRecord> _collection;
+    private readonly InMemoryVectorStore _vectorStore;
     private int _recordCount;
     private bool _initialized;
 
@@ -16,9 +17,14 @@ public class SemanticSearchService : ISemanticSearchService
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
     {
         _embeddingGenerator = embeddingGenerator;
-        var vectorStore = new InMemoryVectorStore();
-        _collection = vectorStore.GetCollection<string, ConferenceRecord>("conference-knowledge");
+        _vectorStore = new InMemoryVectorStore();
+        _collection = _vectorStore.GetCollection<string, ConferenceRecord>("conference-knowledge");
     }
+
+    /// <summary>
+    /// Exposes the underlying VectorStore for use by IngestionPipeline's VectorStoreWriter.
+    /// </summary>
+    public VectorStore VectorStore => _vectorStore;
 
     private async Task EnsureInitializedAsync()
     {

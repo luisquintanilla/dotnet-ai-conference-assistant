@@ -196,13 +196,28 @@ sessionSvc.TopicCompleted += topicId =>
 };
 
 // ---------------------------------------------------------------------------
-// Startup: Load session from seed data + ingest outline into vector store
+// Startup: Load session, ingest outline, initialize MCP clients
 // ---------------------------------------------------------------------------
 var dataRoot = Path.Combine(app.Environment.ContentRootPath, "..", "..", "data");
 
 var sessionService = app.Services.GetRequiredService<ISessionService>();
 await sessionService.LoadSessionAsync(Path.Combine(dataRoot, "seed-topics.json"));
 app.Logger.LogInformation("Session loaded: {Title}", sessionService.CurrentSession?.Title);
+
+// Initialize MCP client connections (Microsoft Learn + DeepWiki) in the background
+_ = Task.Run(async () =>
+{
+    try
+    {
+        var mcpClient = app.Services.GetRequiredService<IMcpContentClient>();
+        await mcpClient.InitializeAsync();
+        app.Logger.LogInformation("MCP clients initialized (Microsoft Learn + DeepWiki)");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "MCP client initialization failed — doc-augmented answers unavailable");
+    }
+});
 
 // Ingest outline in the background (requires AI provider)
 _ = Task.Run(async () =>
