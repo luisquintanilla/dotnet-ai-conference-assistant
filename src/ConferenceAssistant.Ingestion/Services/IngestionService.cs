@@ -58,7 +58,7 @@ public class IngestionService : IIngestionService
             ChunkProcessors = { summaryEnricher, keywordEnricher }
         };
 
-        // 6. Process the markdown file
+        // 6. Process the markdown file via the pipeline (demonstrates M.E.DataIngestion API)
         int count = 0;
         var dir = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(markdownPath))!);
         var filename = Path.GetFileName(markdownPath);
@@ -74,7 +74,31 @@ public class IngestionService : IIngestionService
                 _logger.LogWarning("Failed to process document {DocId}", result.DocumentId);
             }
         }
-        return count;
+
+        // 7. Also create ConferenceRecord entries for searchability
+        //    (VectorStoreWriter uses its own record type; SemanticSearchService queries ConferenceRecord)
+        var markdownContent = await File.ReadAllTextAsync(markdownPath);
+        var sections = SplitMarkdownByHeaders(markdownContent);
+        int searchableCount = 0;
+        foreach (var (header, body) in sections)
+        {
+            if (string.IsNullOrWhiteSpace(body)) continue;
+            var record = new ConferenceRecord
+            {
+                Id = $"outline-{searchableCount}",
+                Source = "outline",
+                Content = string.IsNullOrWhiteSpace(header)
+                    ? body.Trim()
+                    : $"{header}\n{body.Trim()}"
+            };
+            await _searchService.UpsertAsync(record);
+            searchableCount++;
+        }
+
+        _logger.LogInformation(
+            "Outline ingestion complete: {PipelineCount} pipeline chunks, {SearchableCount} searchable records",
+            count, searchableCount);
+        return count + searchableCount;
     }
 
     public async Task<int> IngestResponseAsync(
@@ -125,5 +149,66 @@ public class IngestionService : IIngestionService
 
         await _searchService.UpsertAsync(record);
         return 1;
+    }
+
+    public async Task<int> IngestQuestionAsync(string questionId, string questionText, string? topicId = null)
+    {
+        var record = new ConferenceRecord
+        {
+            Id = $"question-{questionId}",
+            Source = "question",
+            TopicId = topicId ?? "",
+            Content = $"Audience question: {questionText}"
+        };
+
+        await _searchService.UpsertAsync(record);
+        return 1;
+    }
+
+    public async Task<int> IngestSessionSummaryAsync(string summaryContent)
+    {
+        var record = new ConferenceRecord
+        {
+            Id = "session-summary",
+            Source = "session-summary",
+            Content = summaryContent
+        };
+
+        await _searchService.UpsertAsync(record);
+        _logger.LogInformation("Session summary ingested into knowledge base ({Length} chars)", summaryContent.Length);
+        return 1;
+    }
+
+    /// <summary>
+    /// Simple header-based markdown splitting for creating searchable ConferenceRecords.
+    /// </summary>
+    private static List<(string Header, string Body)> SplitMarkdownByHeaders(string markdown)
+    {
+        var sections = new List<(string, string)>();
+        var lines = markdown.Split('\n');
+        string currentHeader = "";
+        var currentBody = new StringBuilder();
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith('#'))
+            {
+                if (currentBody.Length > 0 || !string.IsNullOrEmpty(currentHeader))
+                {
+                    sections.Add((currentHeader, currentBody.ToString()));
+                    currentBody.Clear();
+                }
+                currentHeader = line.TrimStart('#', ' ');
+            }
+            else
+            {
+                currentBody.AppendLine(line);
+            }
+        }
+
+        if (currentBody.Length > 0 || !string.IsNullOrEmpty(currentHeader))
+            sections.Add((currentHeader, currentBody.ToString()));
+
+        return sections;
     }
 }

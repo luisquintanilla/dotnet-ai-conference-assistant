@@ -195,6 +195,46 @@ sessionSvc.TopicCompleted += topicId =>
     _ = Task.Run(() => insightGen.GenerateTopicInsightsAsync(topicId));
 };
 
+// Ingest questions immediately when received (before they're answered)
+var questionSvc = app.Services.GetRequiredService<IQuestionService>();
+questionSvc.QuestionReceived += q =>
+{
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await ingestionService.IngestQuestionAsync(q.Id, q.Text, q.TopicId);
+            app.Logger.LogInformation("Ingested question {QuestionId} into knowledge base", q.Id);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Failed to ingest question {QuestionId}", q.Id);
+        }
+    });
+};
+
+// Generate session summary + ingest on session end
+sessionSvc.SessionEnded += () =>
+{
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            var workflow = app.Services.GetRequiredService<SessionSummaryWorkflow>();
+            var summary = await workflow.ExecuteAsync();
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                await ingestionService.IngestSessionSummaryAsync(summary);
+                app.Logger.LogInformation("Session summary generated and ingested into knowledge base");
+            }
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Failed to generate/ingest session summary");
+        }
+    });
+};
+
 // ---------------------------------------------------------------------------
 // Startup: Load session, ingest outline, initialize MCP clients
 // ---------------------------------------------------------------------------
