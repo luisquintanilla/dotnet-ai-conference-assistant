@@ -99,7 +99,8 @@ src/
 └── ConferenceAssistant.ServiceDefaults/  # Aspire service defaults
 data/
 ├── seed-topics.json                  # Pre-configured session topics + polls
-└── session-outline.md                # Session content (ingested at startup)
+├── session-outline.md                # Session content (ingested at startup)
+└── slides.md                         # Markdown slide deck (display + knowledge base)
 docs/
 ├── plan.md                           # Master plan
 ├── architecture.md                   # Technical architecture
@@ -165,6 +166,17 @@ Segment 3: + insights           → trend-aware poll
 Segment 4: + MCP docs           → maximum context
 Closer:    FULL knowledge base  → comprehensive summary
 ```
+
+## Slide System
+
+The presentation content is authored in Markdown (`data/slides.md`) using simple conventions:
+- `---` separates slides
+- `<!-- speaker: notes -->` adds presenter-only speaker notes
+- `<!-- topic: id -->` maps slides to session topics
+
+The big screen (`/display`) shows slides full-screen between polls. The presenter (`/presenter`) sees the current slide, speaker notes, and a preview of the next slide — like PowerPoint Presenter View.
+
+See [docs/slide-authoring-guide.md](docs/slide-authoring-guide.md) for the full authoring reference.
 
 ## License
 

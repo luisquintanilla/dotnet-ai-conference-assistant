@@ -1886,3 +1886,247 @@ Update `README.md` at repo root with:
 - Links to docs/
 
 **Done when**: A new developer can clone, read README, set env vars, and run the app.
+
+---
+
+## Component 29: slide-model
+
+### What to create
+
+**`src/ConferenceAssistant.Core/Models/Slide.cs`** — Domain model for individual presentation slides plus supporting enums:
+
+```csharp
+namespace ConferenceAssistant.Core.Models;
+
+public class Slide
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string? TopicId { get; set; }
+    public int Order { get; set; }
+    public SlideType Type { get; set; } = SlideType.Content;
+    public SlideLayout Layout { get; set; } = SlideLayout.Default;
+    public string Title { get; set; } = "";
+    public string? Subtitle { get; set; }
+    public List<string> Bullets { get; set; } = [];
+    public string? BodyMarkdown { get; set; }
+    public string? CodeSnippet { get; set; }
+    public string? CodeLanguage { get; set; }
+    public string SpeakerNotes { get; set; } = "";
+}
+
+public enum SlideType
+{
+    Title,
+    Content,
+    Code,
+    Section,
+    Poll,
+    Blank
+}
+
+public enum SlideLayout
+{
+    Default,
+    Centered,
+    TwoColumn
+}
+```
+
+`SessionTopic` gains a `Slides` property to hold the parsed slides for each topic:
+
+```csharp
+public List<Slide> Slides { get; set; } = [];
+```
+
+**Done when**: `dotnet build` succeeds, `Slide` model has all properties (`Id`, `TopicId`, `Order`, `Type`, `Layout`, `Title`, `Subtitle`, `Bullets`, `BodyMarkdown`, `CodeSnippet`, `CodeLanguage`, `SpeakerNotes`), `SlideType` has six members, `SlideLayout` has three members, and `SessionTopic.Slides` is populated by the parser.
+
+---
+
+## Component 30: slide-markdown-parser
+
+### What to create
+
+**`src/ConferenceAssistant.Core/Services/SlideMarkdownParser.cs`** — A static parser that converts a Markdown presentation deck into a `List<Slide>`.
+
+**Public API:**
+- `static List<Slide> Parse(string markdown)` — Synchronous parse of a markdown string.
+- `static async Task<List<Slide>> ParseFileAsync(string filePath)` — Reads a file then delegates to `Parse`.
+
+**Parsing algorithm:**
+1. **Normalize** line endings to `\n`.
+2. **Split** the document on lines that are exactly `---` (`Regex.Split(markdown, @"^---\s*$", RegexOptions.Multiline)`).
+3. **Detect YAML frontmatter** — if the document starts with `---`, skip the first two parts (empty prefix + frontmatter body).
+4. **For each block**, extract metadata via compiled regexes, then classify:
+   - **Topic** (`<!-- topic: id -->`) — sticky across subsequent slides until changed.
+   - **Layout** (`<!-- layout: centered|two-column -->`) — per-slide override.
+   - **Speaker notes** (`<!-- speaker: ... -->`) — extracted and stripped from visible content.
+   - **Blank detection** — if no visible content remains after stripping comments, emit `SlideType.Blank` (only if speaker notes were present; otherwise skip the block).
+5. **Classify** the slide based on visible content:
+   - `H1` + `H2` only → `SlideType.Title` (layout defaults to `Centered`).
+   - `H1` only → `SlideType.Section`.
+   - Heading + fenced code block → `SlideType.Code` (captures language + snippet).
+   - Heading + bullet list → `SlideType.Content` (captures bullet text).
+   - Heading + other body → `SlideType.Content` with `BodyMarkdown`.
+   - No heading + code → `SlideType.Code`.
+   - No heading + bullets → `SlideType.Content`.
+   - Fallback → `SlideType.Content` with `BodyMarkdown`.
+
+**Key regex patterns from the source:**
+```csharp
+private static readonly Regex SpeakerNotesRegex = new(
+    @"<!--\s*speaker\s*:(.*?)-->",
+    RegexOptions.Singleline | RegexOptions.Compiled);
+
+private static readonly Regex TopicRegex = new(
+    @"<!--\s*topic\s*:\s*(.*?)\s*-->",
+    RegexOptions.Compiled);
+
+private static readonly Regex LayoutRegex = new(
+    @"<!--\s*layout\s*:\s*(.*?)\s*-->",
+    RegexOptions.Compiled);
+
+private static readonly Regex FencedCodeBlockRegex = new(
+    @"^```(\w*)\s*\n(.*?)^```",
+    RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.Compiled);
+
+private static readonly Regex H1Regex = new(
+    @"^#\s+(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
+
+private static readonly Regex H2Regex = new(
+    @"^##\s+(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
+
+private static readonly Regex BulletRegex = new(
+    @"^[\-\*]\s+(.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
+```
+
+**Done when**: `SlideMarkdownParser.Parse(testMarkdown)` produces the correct number of `Slide` objects from a test markdown input, each with the right `Type`, `TopicId`, `Title`, `SpeakerNotes`, and `CodeSnippet` values.
+
+---
+
+## Component 31: slides-markdown-file
+
+### What to create
+
+**`data/slides.md`** — The Markdown presentation deck consumed by `SlideMarkdownParser`.
+
+**Structure:**
+- Begins with **YAML frontmatter** (between `---` fences) containing title, subtitle, and date metadata.
+- Individual slides are separated by `---` on their own line.
+- ~28 slides spanning 5 topics (meai, knowledge, agents, mcp, closer) plus intro/outro slides.
+- Conventions used throughout:
+  - `<!-- topic: <id> -->` to map a slide (and subsequent slides) to a `SessionTopic`.
+  - `<!-- speaker: ... -->` for speaker notes (timing cues, demo instructions, transitions). These are only shown on the Presenter page.
+  - `<!-- layout: centered -->` or `<!-- layout: two-column -->` for explicit layout overrides.
+  - `# Heading` for slide titles, `## Subtitle` for subtitles, fenced code blocks for code slides, and `- bullet` lists for content slides.
+
+**Done when**: `data/slides.md` exists, contains `---` slide separators, includes `<!-- topic: -->` mappings for all five topic IDs, and `SlideMarkdownParser.ParseFileAsync("data/slides.md")` returns ~28 slides.
+
+---
+
+## Component 32: session-service-slides
+
+### What to create
+
+Extend the session service to manage slide state and navigation.
+
+**`src/ConferenceAssistant.Core/Services/ISessionService.cs`** — New interface members:
+```csharp
+event Action<Slide>? SlideChanged;
+
+Slide? ActiveSlide { get; }
+int ActiveSlideIndex { get; }
+int TotalSlides { get; }
+
+Task LoadSlidesAsync(string slidesPath);
+List<Slide> GetSlidesForTopic(string topicId);
+Task AdvanceSlideAsync();
+Task GoBackSlideAsync();
+Task GoToSlideAsync(string slideId);
+Slide? GetNextSlide();
+Slide? GetPreviousSlide();
+```
+
+**`src/ConferenceAssistant.Core/Services/SessionService.cs`** — Implementation details:
+- `LoadSlidesAsync` calls `SlideMarkdownParser.ParseFileAsync`, stores the full slide list, and distributes slides to each `SessionTopic.Slides` by matching `TopicId`.
+- `ActivateTopicAsync` auto-advances to the **first slide** of the newly activated topic (fires `SlideChanged`).
+- `AdvanceSlideAsync` / `GoBackSlideAsync` move the `ActiveSlideIndex` within the global slide list and fire `SlideChanged`.
+- `GoToSlideAsync` jumps to a specific slide by ID.
+- `GetNextSlide` / `GetPreviousSlide` return peek values without mutating state.
+
+**Startup wiring** — `LoadSlidesAsync` is called during app initialization in `Program.cs`, right after `LoadTopicsAsync`:
+```csharp
+await sessionService.LoadSlidesAsync(
+    builder.Configuration["Session:SlidesPath"] ?? "data/slides.md");
+```
+
+**Done when**: Slides load at startup (log message: "Slides loaded: N slides"), navigation methods advance/retreat correctly, `SlideChanged` event fires on every navigation, and activating a topic auto-advances to that topic's first slide.
+
+---
+
+## Component 33: slide-renderer
+
+### What to create
+
+**`src/ConferenceAssistant.Web/Components/Shared/SlideRenderer.razor`** — Reusable Blazor component that renders a single `Slide`.
+
+**Parameters:**
+- `[Parameter] Slide? Slide` — the slide to render.
+- `[Parameter] bool Compact` — when `true`, uses smaller fonts and tighter spacing (for presenter preview / "Up Next" thumbnail); when `false`, uses large display-mode fonts.
+
+**Rendering by SlideType:**
+| SlideType | Rendering |
+|-----------|-----------|
+| `Title` | Large centered title + subtitle |
+| `Section` | Full-width section heading |
+| `Content` | Title + bullet list or body markdown |
+| `Code` | Title + syntax-highlighted code block (`<pre><code>`) with language class |
+| `Blank` | Empty visible area (speaker notes only — not rendered here) |
+| `Poll` | Placeholder / "Poll active" indicator |
+
+- Display mode: large fonts, dark background, high contrast — readable from the back of a conference room.
+- Compact mode: smaller fonts, contained within a preview box.
+
+**Done when**: `<SlideRenderer Slide="@slide" />` renders each slide type correctly in both compact and full-size modes.
+
+---
+
+## Component 34: display-slides
+
+### What to create
+
+Update **`src/ConferenceAssistant.Web/Components/Pages/Display.razor`** to show slides.
+
+**Content priority** (highest to lowest):
+1. **Active Poll** — `PollResultsChart` overlays everything when a poll is live.
+2. **Active Slide** — `<SlideRenderer Slide="@ActiveSlide" />` fills the main area.
+3. **Latest Insight** — `InsightCard` for the most recent AI insight.
+4. **Cascade visualization** — Fallback ambient display.
+
+**Additional UI:**
+- **Progress dots** at the bottom of the screen — one dot per slide in the current topic, with the active slide highlighted. Provides a subtle position indicator for the audience.
+
+**Real-time updates:**
+- Subscribe to `SlideChanged` event from `SessionStateService` → call `InvokeAsync(StateHasChanged)`.
+- When a poll becomes active, it takes priority over the slide.
+- When the poll closes, the slide returns.
+
+**Done when**: Display shows the current slide full-screen, active polls overlay the slide, progress dots reflect the current position, and all transitions happen in real-time.
+
+---
+
+## Component 35: presenter-slides
+
+### What to create
+
+Update **`src/ConferenceAssistant.Web/Components/Pages/Presenter.razor`** to add slide controls.
+
+**New UI elements in the main panel:**
+- **Slide preview box** — `<SlideRenderer Slide="@ActiveSlide" Compact="true" />` showing the current slide in compact mode.
+- **Speaker notes panel** — Rendered below the preview with a 🎤 icon. Shows `ActiveSlide.SpeakerNotes` (timing cues, demo instructions). Only visible on the Presenter page — never sent to the Display.
+- **Navigation controls:**
+  - **◀ Previous** / **Next ▶** buttons for slide navigation.
+  - **Keyboard shortcuts:** `→` (Right Arrow) and `Space` advance the slide; `←` (Left Arrow) goes back. Keyboard events are captured at the panel level and suppressed when focus is inside a text input (to avoid conflicts with poll question / answer forms).
+- **"Up Next" preview** — A small thumbnail using `<SlideRenderer Slide="@NextSlide" Compact="true" />` so the speaker can see what's coming.
+- **Progress indicator** — "Slide X of Y" text showing `ActiveSlideIndex + 1` of `TotalSlides`.
+
+**Done when**: Presenter shows the current slide preview, speaker notes, Previous/Next buttons, keyboard navigation (→/Space/←), "Up Next" thumbnail, and "Slide X of Y" progress.

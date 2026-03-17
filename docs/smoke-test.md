@@ -543,6 +543,57 @@ Verify the complete data flow through one topic:
 
 ---
 
+## 15. Slide System
+
+### Verify Slides Load
+```
+# Check the startup logs in the Aspire dashboard or terminal
+# Should see: "Slides loaded: 28 slides"
+```
+
+### Presenter Slide Navigation
+1. Navigate to `/presenter`
+2. Click **Go Live** to start the session
+3. Activate the first topic (Microsoft.Extensions.AI)
+4. ✅ The main panel should show a **slide preview** with the topic's first slide
+5. ✅ **Speaker notes** should appear below the preview (with 🎤 icon)
+6. Click **Next ▶** — slide advances, preview and notes update
+7. Click **◀ Previous** — slide goes back
+8. ✅ Progress shows "Slide X of Y"
+9. ✅ "Up Next" preview shows the next slide
+
+### Display Slide Rendering
+1. Open `/display` in a separate browser window
+2. ✅ When no poll is active, the display shows the **current slide full-screen**
+3. ✅ Large text, dark background, readable from back of room
+4. ✅ Progress dots at the bottom show current position
+5. Advance a slide on the presenter → ✅ display updates in real-time
+
+### Keyboard Navigation
+1. Click in the main panel area on the presenter page (to focus it)
+2. Press **→** (right arrow) → slide advances
+3. Press **←** (left arrow) → slide goes back
+4. Press **Space** → slide advances
+5. ✅ Keyboard navigation does NOT trigger when typing in a text input (poll question, answer form)
+
+### Poll/Slide Priority
+1. While a slide is showing on the display, launch a poll
+2. ✅ The poll **replaces** the slide on the display
+3. Close the poll
+4. ✅ The slide **returns** on the display
+
+### Topic Auto-Navigation
+1. Activate a different topic (e.g., "Knowledge Engineering") on the presenter
+2. ✅ The slide automatically jumps to the **first slide** of that topic
+3. ✅ Both presenter and display update accordingly
+
+### Speaker Notes Privacy
+1. While slides are showing, compare `/presenter` and `/display`
+2. ✅ Speaker notes (timing cues, demo instructions) appear **only** on the presenter
+3. ✅ The display shows **only** the slide content (no notes)
+
+---
+
 ## Quick Checklist
 
 ```

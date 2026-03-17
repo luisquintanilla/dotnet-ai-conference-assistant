@@ -2,6 +2,7 @@
 @layout ConferenceAssistant.Web.Components.Layout.DisplayLayout
 @using ConferenceAssistant.Core.Models
 @using ConferenceAssistant.Core.Services
+@implements IDisposable
 @inject ISessionService SessionService
 @inject IPollService PollService
 @inject IInsightService InsightService
@@ -36,6 +37,21 @@
                 {
                     <PollResultsChart Poll="@activePoll" Results="@pollResults" />
                 }
+                else if (activeSlide is not null)
+                {
+                    <div class="display-slide-area">
+                        <SlideRenderer Slide="@activeSlide" />
+                        @if (totalSlides > 0)
+                        {
+                            <div class="slide-progress-dots">
+                                @for (var i = 0; i < totalSlides; i++)
+                                {
+                                    <span class="progress-dot @(i == activeSlideIndex ? "active" : "")"></span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
                 else if (latestInsight is not null)
                 {
                     <div class="display-insight">
@@ -65,15 +81,29 @@
     private Dictionary<string, int>? pollResults;
     private Insight? latestInsight;
     private IReadOnlyList<CascadeEvent> cascadeEvents = [];
+    private Slide? activeSlide;
+    private int activeSlideIndex;
+    private int totalSlides;
+
+    private Action<Poll>? onPollActivated;
+    private Action<Poll>? onPollClosed;
+    private Action<PollResponse>? onResponseReceived;
+    private Action<Slide>? onSlideChanged;
 
     protected override void OnInitialized()
     {
         session = SessionService.CurrentSession;
         RefreshState();
 
-        PollService.PollActivated += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
-        PollService.PollClosed += _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
-        PollService.ResponseReceived += _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
+        onPollActivated = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        onPollClosed = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
+        onResponseReceived = _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
+        onSlideChanged = _ => InvokeAsync(() => { RefreshSlideState(); StateHasChanged(); });
+
+        PollService.PollActivated += onPollActivated;
+        PollService.PollClosed += onPollClosed;
+        PollService.ResponseReceived += onResponseReceived;
+        SessionService.SlideChanged += onSlideChanged;
     }
 
     private void RefreshState()
@@ -82,15 +112,31 @@
         activeTopic = SessionService.GetActiveTopic();
         activePoll = PollService.GetActivePoll();
         RefreshPollResults();
+        RefreshSlideState();
 
         var insights = InsightService.GetAllInsights();
         latestInsight = insights.Count > 0 ? insights[^1] : null;
+    }
+
+    private void RefreshSlideState()
+    {
+        activeSlide = SessionService.ActiveSlide;
+        activeSlideIndex = SessionService.ActiveSlideIndex;
+        totalSlides = SessionService.TotalSlides;
     }
 
     private void RefreshPollResults()
     {
         if (activePoll is not null)
             pollResults = PollService.GetPollResults(activePoll.Id);
+    }
+
+    public void Dispose()
+    {
+        PollService.PollActivated -= onPollActivated;
+        PollService.PollClosed -= onPollClosed;
+        PollService.ResponseReceived -= onResponseReceived;
+        SessionService.SlideChanged -= onSlideChanged;
     }
 }
 
@@ -168,5 +214,33 @@
         overflow-y: auto;
         border-left: 1px solid rgba(255, 255, 255, 0.05);
         padding-left: 1rem;
+    }
+
+    .display-slide-area {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .slide-progress-dots {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        padding: 1rem 0 0.5rem;
+    }
+
+    .progress-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        transition: background 0.3s ease;
+    }
+
+    .progress-dot.active {
+        background: #e94560;
     }
 </style>

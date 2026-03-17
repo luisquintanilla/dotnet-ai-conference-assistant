@@ -244,6 +244,18 @@ var sessionService = app.Services.GetRequiredService<ISessionService>();
 await sessionService.LoadSessionAsync(Path.Combine(dataRoot, "seed-topics.json"));
 app.Logger.LogInformation("Session loaded: {Title}", sessionService.CurrentSession?.Title);
 
+// Load slides from Markdown
+var slidesPath = Path.Combine(dataRoot, "slides.md");
+if (File.Exists(slidesPath))
+{
+    await sessionService.LoadSlidesAsync(slidesPath);
+    app.Logger.LogInformation("Slides loaded: {Count} slides", sessionService.TotalSlides);
+}
+else
+{
+    app.Logger.LogWarning("No slides.md found at {Path} — slide features disabled", slidesPath);
+}
+
 // Initialize MCP client connections (Microsoft Learn + DeepWiki) in the background
 _ = Task.Run(async () =>
 {

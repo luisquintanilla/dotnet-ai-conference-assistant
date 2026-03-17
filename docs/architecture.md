@@ -9,6 +9,7 @@
 │  /presenter    → Speaker dashboard + controls              │
 │  /session/{id} → Attendee participation (mobile-first)     │
 │  /display      → Projection view (big screen)              │
+│  slides.md     → Markdown slide deck (parsed at startup)   │
 │                                                            │
 │  Real-time: SignalR (built into Blazor Server circuits)    │
 └──────────────────────┬─────────────────────────────────────┘
@@ -87,7 +88,8 @@ dotnet-ai-conference-assistant/
 │   │   │       ├── PollResults.razor
 │   │   │       ├── InsightPanel.razor
 │   │   │       ├── QuestionFeed.razor
-│   │   │       └── AgentActivityLog.razor
+│   │   │       ├── AgentActivityLog.razor
+│   │   │       └── SlideRenderer.razor
 │   │   ├── Services/
 │   │   │   └── SessionStateService.cs
 │   │   └── wwwroot/
@@ -146,11 +148,13 @@ dotnet-ai-conference-assistant/
 │       └── Services/
 │           ├── PollService.cs
 │           ├── SessionService.cs
-│           └── InMemoryStore.cs
+│           ├── InMemoryStore.cs
+│           └── SlideMarkdownParser.cs
 │
 ├── data/
 │   ├── session-outline.md
-│   └── seed-topics.json
+│   ├── seed-topics.json
+│   └── slides.md
 │
 ├── tests/
 │   ├── ConferenceAssistant.Agents.Tests/
@@ -165,7 +169,8 @@ dotnet-ai-conference-assistant/
 │   ├── prd.md
 │   ├── architecture.md
 │   ├── implementation-spec.md
-│   └── session-outline.md
+│   ├── session-outline.md
+│   └── slide-authoring-guide.md
 │
 ├── Directory.Packages.props
 ├── Directory.Build.props
@@ -317,6 +322,17 @@ Copilot SDK console app runs:
           → Copilot formats and streams to console
 ```
 
+### Flow 5: Slide Navigation
+```
+Speaker clicks "Next" (or presses →/Space)
+  → Presenter.razor calls SessionService.AdvanceSlideAsync()
+    → _activeSlideIndex incremented
+      → SlideChanged event fires
+        → Display.razor receives event via InvokeAsync
+          → SlideRenderer re-renders with new slide
+        → Presenter.razor updates preview + speaker notes
+```
+
 ---
 
 ## SignalR / Real-Time Strategy
@@ -341,8 +357,53 @@ public class SessionStateService
     public event Action<SessionTopic>? OnTopicChanged;
     public event Action<string>? OnAgentActivity;  // activity description
     public event Action<string>? OnSummaryChunk;   // streaming summary text
+    public event Action<int>? OnSlideChanged;      // active slide index
 }
 ```
+
+---
+
+## Slide System
+
+### Markdown-First Approach
+
+Slides are authored in `data/slides.md` using Marp-inspired conventions. The Markdown file is parsed once at startup by `SlideMarkdownParser` (in `ConferenceAssistant.Core/Services/`).
+
+### Parser Behavior
+
+`SlideMarkdownParser` processes the Markdown deck as follows:
+1. Splits the file on `---` delimiters (horizontal rules)
+2. Extracts `<!-- speaker: ... -->` HTML comments as presenter-only speaker notes
+3. Reads `<!-- topic: id -->` comments to map slides to `SessionTopic` entries
+4. Auto-detects slide type from content structure (fenced code blocks → Code, `#` only → Title, bullets → Content, etc.)
+
+### Slide Model
+
+```csharp
+public class Slide
+{
+    public SlideType Type { get; set; }    // Title, Content, Code, Section, Blank
+    public string? Layout { get; set; }
+    public string? Title { get; set; }
+    public List<string> Bullets { get; set; }
+    public string? CodeSnippet { get; set; }
+    public string? SpeakerNotes { get; set; }  // presenter-only
+    public string? TopicId { get; set; }
+}
+```
+
+### Display Priority
+
+The `/display` view renders content using this priority order:
+
+1. **Active Poll** — poll voting/results take over the full screen
+2. **Active Slide** — the current slide from the deck
+3. **Latest Insight** — AI-generated insight panel
+4. **Cascade Visualization** — the "snowball" knowledge cascade
+
+### Speaker Notes
+
+Speaker notes (from `<!-- speaker: ... -->` comments) are **presenter-only**. They appear in the `/presenter` dashboard alongside the current slide but are never rendered on `/display` or `/session/{id}`.
 
 ---
 

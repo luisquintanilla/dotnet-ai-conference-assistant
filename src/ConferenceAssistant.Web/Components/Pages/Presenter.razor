@@ -69,7 +69,41 @@
             </div>
 
             <!-- Active Topic Panel (main area) -->
-            <div class="panel main-panel">
+            <div class="panel main-panel" tabindex="0" @onkeydown="HandleSlideKeydown">
+                @* Slide Presenter View *@
+                @if (activeSlide is not null)
+                {
+                    <div class="slide-presenter-view">
+                        <div class="slide-preview-box">
+                            <SlideRenderer Slide="@activeSlide" Compact="true" />
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(activeSlide.SpeakerNotes))
+                        {
+                            <div class="speaker-notes">
+                                <span>🎤</span> @activeSlide.SpeakerNotes
+                            </div>
+                        }
+
+                        <div class="slide-nav-controls">
+                            <div class="slide-nav-buttons">
+                                <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@(SessionService.ActiveSlideIndex <= 0)">◀ Previous</button>
+                                <span class="slide-progress">Slide @(SessionService.ActiveSlideIndex + 1) of @SessionService.TotalSlides</span>
+                                <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@(SessionService.ActiveSlideIndex >= SessionService.TotalSlides - 1)">Next ▶</button>
+                            </div>
+                            @if (nextSlide is not null)
+                            {
+                                <div class="up-next-preview">
+                                    <span class="up-next-label">Up Next</span>
+                                    <div class="up-next-box">
+                                        <SlideRenderer Slide="@nextSlide" Compact="true" />
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
                 @if (activeTopic is not null)
                 {
                     <div class="topic-detail">
@@ -303,6 +337,11 @@
     // Insight generation
     private bool isGeneratingInsights;
 
+    // Slide navigation
+    private Slide? activeSlide;
+    private Slide? nextSlide;
+    private Action<Slide>? onSlideChanged;
+
     // Event handler references for cleanup
     private Action<PollResponse>? onResponseReceived;
     private Action<Poll>? onPollActivated;
@@ -328,6 +367,7 @@
         onQuestionAnswered = _ => InvokeAsync(() => { RefreshQuestions(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
         onQuestionUpvoted = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
         onInsightGenerated = _ => InvokeAsync(() => { RefreshInsights(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
+        onSlideChanged = _ => InvokeAsync(() => { activeSlide = SessionService.ActiveSlide; nextSlide = SessionService.GetNextSlide(); StateHasChanged(); });
 
         PollService.ResponseReceived += onResponseReceived;
         PollService.PollActivated += onPollActivated;
@@ -336,6 +376,7 @@
         QuestionService.QuestionAnswered += onQuestionAnswered;
         QuestionService.QuestionUpvoted += onQuestionUpvoted;
         InsightService.InsightGenerated += onInsightGenerated;
+        SessionService.SlideChanged += onSlideChanged;
 
         // Periodic refresh of knowledge base count (catches background ingestion)
         _knowledgeBaseTimer = new Timer(_ =>
@@ -353,12 +394,15 @@
         QuestionService.QuestionAnswered -= onQuestionAnswered;
         QuestionService.QuestionUpvoted -= onQuestionUpvoted;
         InsightService.InsightGenerated -= onInsightGenerated;
+        SessionService.SlideChanged -= onSlideChanged;
     }
 
     private void RefreshState()
     {
         session = SessionService.CurrentSession;
         activeTopic = SessionService.GetActiveTopic();
+        activeSlide = SessionService.ActiveSlide;
+        nextSlide = SessionService.GetNextSlide();
 
         var previousPoll = activePoll;
         activePoll = PollService.GetActivePoll();
@@ -572,9 +616,104 @@
             StateHasChanged();
         }
     }
+
+    // Slide navigation
+
+    private async Task AdvanceSlideAsync()
+    {
+        await SessionService.AdvanceSlideAsync();
+        RefreshState();
+    }
+
+    private async Task GoBackSlideAsync()
+    {
+        await SessionService.GoBackSlideAsync();
+        RefreshState();
+    }
+
+    private async Task HandleSlideKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key is "ArrowRight" or " ")
+        {
+            await AdvanceSlideAsync();
+        }
+        else if (e.Key is "ArrowLeft")
+        {
+            await GoBackSlideAsync();
+        }
+    }
 }
 
 <style>
+    .slide-presenter-view {
+        margin-bottom: 1.5rem;
+    }
+
+    .slide-preview-box {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.75rem;
+        min-height: 200px;
+        padding: 1rem;
+        overflow: hidden;
+    }
+
+    .speaker-notes {
+        background: rgba(233, 69, 96, 0.05);
+        border-left: 3px solid #e94560;
+        padding: 1rem;
+        font-style: italic;
+        opacity: 0.9;
+        border-radius: 0 0.5rem 0.5rem 0;
+        margin-top: 0.75rem;
+    }
+
+    .slide-nav-controls {
+        margin-top: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .slide-nav-buttons {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+    }
+
+    .slide-progress {
+        opacity: 0.6;
+        text-align: center;
+        font-size: 0.85rem;
+    }
+
+    .up-next-preview {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .up-next-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.5;
+    }
+
+    .up-next-box {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.5rem;
+        height: 150px;
+        width: 100%;
+        max-width: 300px;
+        overflow: hidden;
+        opacity: 0.6;
+        padding: 0.5rem;
+    }
+
     .question-answer.ai-answer {
         background: rgba(100, 100, 255, 0.1);
         border-left: 3px solid rgba(100, 100, 255, 0.5);
