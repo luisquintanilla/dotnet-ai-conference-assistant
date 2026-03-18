@@ -1,112 +1,70 @@
-using System.Collections.Concurrent;
 using ConferenceAssistant.Core.Models;
 
 namespace ConferenceAssistant.Core.Services;
 
 public class PollService : IPollService
 {
-    private readonly ConcurrentDictionary<string, Poll> _polls = new();
-    private readonly ConcurrentDictionary<string, List<PollResponse>> _responses = new();
+    private readonly ISessionManager _sessionManager;
+    private readonly ISessionService _sessionService;
+    private readonly HashSet<string> _wiredSessions = [];
 
     public event Action<Poll>? PollActivated;
     public event Action<Poll>? PollClosed;
     public event Action<PollResponse>? ResponseReceived;
 
+    public PollService(ISessionManager sessionManager, ISessionService sessionService)
+    {
+        _sessionManager = sessionManager;
+        _sessionService = sessionService;
+    }
+
+    private SessionContext GetDefaultContext()
+    {
+        var code = _sessionService.CurrentSession?.SessionCode
+            ?? throw new InvalidOperationException("No default session loaded.");
+        var ctx = _sessionManager.GetSession(code)
+            ?? throw new InvalidOperationException($"Session '{code}' not found.");
+        EnsureEventsWired(ctx);
+        return ctx;
+    }
+
+    private void EnsureEventsWired(SessionContext ctx)
+    {
+        if (_wiredSessions.Add(ctx.Session.SessionCode))
+        {
+            ctx.PollActivated += p => PollActivated?.Invoke(p);
+            ctx.PollClosed += p => PollClosed?.Invoke(p);
+            ctx.ResponseReceived += r => ResponseReceived?.Invoke(r);
+        }
+    }
+
     public Task<Poll> CreatePollAsync(string topicId, string question, List<string> options, PollSource source = PollSource.Generated)
     {
-        var poll = new Poll
-        {
-            TopicId = topicId,
-            Question = question,
-            Options = options,
-            Source = source,
-            Status = PollStatus.Draft
-        };
-
-        _polls[poll.Id] = poll;
-        _responses[poll.Id] = [];
-
+        var poll = GetDefaultContext().CreatePoll(topicId, question, options, source);
         return Task.FromResult(poll);
     }
 
     public Task ActivatePollAsync(string pollId)
     {
-        var poll = GetPollOrThrow(pollId);
-        poll.Status = PollStatus.Active;
-
-        PollActivated?.Invoke(poll);
+        GetDefaultContext().ActivatePoll(pollId);
         return Task.CompletedTask;
     }
 
     public Task ClosePollAsync(string pollId)
     {
-        var poll = GetPollOrThrow(pollId);
-        poll.Status = PollStatus.Closed;
-        poll.ClosedAt = DateTimeOffset.UtcNow;
-
-        PollClosed?.Invoke(poll);
+        GetDefaultContext().ClosePoll(pollId);
         return Task.CompletedTask;
     }
 
     public Task<PollResponse> SubmitResponseAsync(string pollId, string selectedOption, string? attendeeId = null)
     {
-        _ = GetPollOrThrow(pollId);
-
-        var response = new PollResponse
-        {
-            PollId = pollId,
-            SelectedOption = selectedOption,
-            AttendeeId = attendeeId
-        };
-
-        _responses.GetOrAdd(pollId, _ => []).Add(response);
-
-        ResponseReceived?.Invoke(response);
+        var response = GetDefaultContext().SubmitResponse(pollId, selectedOption, attendeeId);
         return Task.FromResult(response);
     }
 
-    public Poll? GetActivePoll()
-    {
-        return _polls.Values.FirstOrDefault(p => p.Status == PollStatus.Active);
-    }
-
-    public Poll? GetPoll(string pollId)
-    {
-        return _polls.TryGetValue(pollId, out var poll) ? poll : null;
-    }
-
-    public IReadOnlyList<Poll> GetPollsForTopic(string topicId)
-    {
-        return _polls.Values
-            .Where(p => p.TopicId == topicId)
-            .OrderBy(p => p.CreatedAt)
-            .ToList()
-            .AsReadOnly();
-    }
-
-    public IReadOnlyList<PollResponse> GetResponsesForPoll(string pollId)
-    {
-        return _responses.TryGetValue(pollId, out var responses)
-            ? responses.ToList().AsReadOnly()
-            : Array.Empty<PollResponse>().AsReadOnly();
-    }
-
-    public Dictionary<string, int> GetPollResults(string pollId)
-    {
-        if (!_responses.TryGetValue(pollId, out var responses))
-        {
-            return new Dictionary<string, int>();
-        }
-
-        return responses
-            .GroupBy(r => r.SelectedOption)
-            .ToDictionary(g => g.Key, g => g.Count());
-    }
-
-    private Poll GetPollOrThrow(string pollId)
-    {
-        return _polls.TryGetValue(pollId, out var poll)
-            ? poll
-            : throw new ArgumentException($"Poll '{pollId}' not found.");
-    }
+    public Poll? GetActivePoll() => GetDefaultContext().GetActivePoll();
+    public Poll? GetPoll(string pollId) => GetDefaultContext().GetPoll(pollId);
+    public IReadOnlyList<Poll> GetPollsForTopic(string topicId) => GetDefaultContext().GetPollsForTopic(topicId);
+    public IReadOnlyList<PollResponse> GetResponsesForPoll(string pollId) => GetDefaultContext().GetResponsesForPoll(pollId);
+    public Dictionary<string, int> GetPollResults(string pollId) => GetDefaultContext().GetPollResults(pollId);
 }

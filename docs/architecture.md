@@ -6,10 +6,12 @@
 ┌────────────────────────────────────────────────────────────┐
 │         Blazor Interactive Server (.NET 10)                 │
 │                                                            │
-│  /presenter    → Speaker dashboard + controls              │
-│  /session/{id} → Attendee participation (mobile-first)     │
-│  /display      → Projection view (big screen)              │
-│  slides.md     → Markdown slide deck (parsed at startup)   │
+│  /                          → Session hub (list + create)  │
+│  /create                    → Create new session form      │
+│  /presenter/{SessionCode}   → Speaker dashboard (PIN gate) │
+│  /session/{SessionCode}     → Attendee participation       │
+│  /display/{SessionCode}     → Projection view (big screen) │
+│  slides.md                  → Markdown slide deck           │
 │                                                            │
 │  Real-time: SignalR (built into Blazor Server circuits)    │
 └──────────────────────┬─────────────────────────────────────┘
@@ -75,10 +77,12 @@ dotnet-ai-conference-assistant/
 │   │   │   ├── Layout/
 │   │   │   │   ├── PresentationLayout.razor
 │   │   │   │   ├── PresentationLayout.razor.css
+│   │   │   │   ├── HomeLayout.razor
 │   │   │   │   ├── DashboardLayout.razor
 │   │   │   │   └── DashboardLayout.razor.css
 │   │   │   ├── Pages/
 │   │   │   │   ├── Home.razor
+│   │   │   │   ├── CreateSession.razor
 │   │   │   │   ├── Presenter.razor
 │   │   │   │   ├── Session.razor
 │   │   │   │   └── Display.razor
@@ -140,12 +144,16 @@ dotnet-ai-conference-assistant/
 │   └── ConferenceAssistant.Core/                 # Shared domain
 │       ├── ConferenceAssistant.Core.csproj
 │       ├── Models/
+│       │   ├── ConferenceSession.cs
+│       │   ├── SessionContext.cs
 │       │   ├── Poll.cs
 │       │   ├── PollResponse.cs
 │       │   ├── SessionTopic.cs
 │       │   ├── Insight.cs
 │       │   └── AudienceQuestion.cs
 │       └── Services/
+│           ├── ISessionManager.cs
+│           ├── SessionManager.cs
 │           ├── PollService.cs
 │           ├── SessionService.cs
 │           ├── InMemoryStore.cs
@@ -178,6 +186,94 @@ dotnet-ai-conference-assistant/
 ├── README.md
 └── .gitignore
 ```
+
+---
+
+## Multi-Session Architecture
+
+The app supports multiple concurrent sessions with Jitsi-style host PIN protection. Each session is fully isolated with its own state, polls, questions, insights, and event pipeline.
+
+### Session Lifecycle
+
+```
+User visits /create
+  → Fills in title, code (optional), PIN, description, template
+    → SessionManager.CreateSession()
+      → New SessionContext created + stored in ConcurrentDictionary
+        → SessionCreated event fires
+          → AI pipelines (Q&A auto-answer, insight generation, ingestion) wired to new session
+            → Session appears on home page (/)
+```
+
+### SessionContext — Per-Session Aggregate
+
+`SessionContext` (`ConferenceAssistant.Core/Models/SessionContext.cs`) holds **all state** for a single session:
+
+- `ConferenceSession` — metadata (title, code, PIN, status, created timestamp)
+- `Slides` — parsed slide deck
+- `Polls` — active and historical polls
+- `Questions` — audience Q&A
+- `Insights` — AI-generated analysis
+- `Events` — per-session event handlers (OnPollCreated, OnQuestionAsked, etc.)
+
+This aggregate pattern ensures sessions are fully isolated — no shared mutable state between sessions.
+
+### SessionManager — Singleton Lifecycle Manager
+
+`ISessionManager` / `SessionManager` (`ConferenceAssistant.Core/Services/`) manages the collection of active sessions:
+
+```csharp
+// Simplified interface
+public interface ISessionManager
+{
+    SessionContext CreateSession(string title, string hostPin, string? code = null, ...);
+    SessionContext? GetSession(string sessionCode);
+    IReadOnlyList<SessionInfo> GetActiveSessions();
+    event Action<SessionContext>? OnSessionCreated;
+}
+```
+
+- Backed by `ConcurrentDictionary<string, SessionContext>` for thread-safe multi-session access
+- `SessionInfo` is a lightweight record (code, title, status, attendee count) for the home page listing
+- `OnSessionCreated` event is the hook for wiring AI pipelines to new sessions
+
+### Event Wiring via SessionCreated
+
+When `SessionCreated` fires, the host (`Program.cs`) subscribes AI services to the new session's events:
+
+- **Q&A auto-answer** — listens to `SessionContext.OnQuestionAsked`
+- **Insight generation** — listens to `SessionContext.OnPollClosed` and `SessionContext.OnTopicCompleted`
+- **Real-time ingestion** — listens to `SessionContext.OnPollClosed`, `SessionContext.OnQuestionAnswered`, `SessionContext.OnInsightGenerated`
+
+This means AI features work automatically for **all** sessions, not just the default.
+
+### PIN Gate Protection Model
+
+The presenter dashboard (`/presenter/{SessionCode}`) is protected by a host PIN:
+
+1. **Creator sets PIN** — 4-6 digit numeric PIN during session creation
+2. **PIN gate UI** — navigating to `/presenter/{code}` shows a PIN input form
+3. **Validation** — entered PIN compared against `ConferenceSession.HostPin`
+4. **Per-circuit state** — PIN validation is stored in Blazor component state (per browser tab)
+5. **No infrastructure** — no cookies, tokens, sessions, or middleware involved
+
+The display (`/display/{SessionCode}`) and attendee (`/session/{SessionCode}`) views have no PIN gate.
+
+### Default Demo Session
+
+At startup, a default session is auto-created from `data/seed-topics.json`:
+- PIN: `0000`
+- Session code: auto-generated (logged at startup)
+- Full AI pipeline wired automatically
+
+### Backward Compatibility Layer
+
+Existing singleton services (`SessionService`, `PollService`, etc.) remain as backward-compatible wrappers:
+
+- They delegate to the **default session** via `SessionManager`
+- MCP tools and agent workflows use the same old interfaces unchanged
+- Events from `SessionContext` are forwarded to global service events (e.g., `SessionStateService.OnPollCreated`)
+- This means all existing MCP tools, agent workflows, and Copilot SDK integration work without modification
 
 ---
 
@@ -394,7 +490,7 @@ public class Slide
 
 ### Display Priority
 
-The `/display` view renders content using this priority order:
+The `/display/{SessionCode}` view renders content using this priority order:
 
 1. **Active Poll** — poll voting/results take over the full screen
 2. **Active Slide** — the current slide from the deck
@@ -403,7 +499,7 @@ The `/display` view renders content using this priority order:
 
 ### Speaker Notes
 
-Speaker notes (from `<!-- speaker: ... -->` comments) are **presenter-only**. They appear in the `/presenter` dashboard alongside the current slide but are never rendered on `/display` or `/session/{id}`.
+Speaker notes (from `<!-- speaker: ... -->` comments) are **presenter-only**. They appear in the `/presenter/{SessionCode}` dashboard alongside the current slide but are never rendered on `/display/{SessionCode}` or `/session/{SessionCode}`.
 
 ---
 

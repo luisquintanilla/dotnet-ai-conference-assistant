@@ -1,17 +1,22 @@
-@page "/session/{SessionId}"
+@page "/session/{SessionCode}"
 @layout ConferenceAssistant.Web.Components.Layout.SessionLayout
 @using ConferenceAssistant.Core.Models
 @using ConferenceAssistant.Core.Services
-@inject ISessionService SessionService
-@inject IPollService PollService
-@inject IQuestionService QuestionService
+@inject ISessionManager SessionManager
 @implements IDisposable
 @rendermode InteractiveServer
 
 <PageTitle>Conference Pulse — Live</PageTitle>
 
 <div class="session-page">
-    @if (session is null)
+    @if (sessionContext is null)
+    {
+        <div class="waiting">
+            <h2>🔍 Session Not Found</h2>
+            <p>No session with code "@SessionCode" exists.</p>
+        </div>
+    }
+    else if (session is null)
     {
         <div class="waiting">
             <p>⏳ Waiting for session to start...</p>
@@ -74,8 +79,9 @@
 </div>
 
 @code {
-    [Parameter] public string SessionId { get; set; } = "";
+    [Parameter] public string SessionCode { get; set; } = "";
 
+    private SessionContext? sessionContext;
     private ConferenceSession? session;
     private SessionTopic? activeTopic;
     private Poll? activePoll;
@@ -94,73 +100,81 @@
 
     protected override void OnInitialized()
     {
-        session = SessionService.CurrentSession;
+        sessionContext = SessionManager.GetSession(SessionCode);
+        if (sessionContext is null) return;
+
+        session = sessionContext.Session;
         RefreshState();
 
         onPollActivated = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
         onPollClosed = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
         onResponseReceived = _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
-        onQuestionReceived = _ => InvokeAsync(() => { questions = QuestionService.GetTopQuestions(10); StateHasChanged(); });
-        onQuestionAnswered = _ => InvokeAsync(() => { questions = QuestionService.GetTopQuestions(10); StateHasChanged(); });
-        onQuestionUpvoted = _ => InvokeAsync(() => { questions = QuestionService.GetTopQuestions(10); StateHasChanged(); });
+        onQuestionReceived = _ => InvokeAsync(() => { questions = sessionContext?.GetTopQuestions(10) ?? []; StateHasChanged(); });
+        onQuestionAnswered = _ => InvokeAsync(() => { questions = sessionContext?.GetTopQuestions(10) ?? []; StateHasChanged(); });
+        onQuestionUpvoted = _ => InvokeAsync(() => { questions = sessionContext?.GetTopQuestions(10) ?? []; StateHasChanged(); });
 
-        PollService.PollActivated += onPollActivated;
-        PollService.PollClosed += onPollClosed;
-        PollService.ResponseReceived += onResponseReceived;
-        QuestionService.QuestionReceived += onQuestionReceived;
-        QuestionService.QuestionAnswered += onQuestionAnswered;
-        QuestionService.QuestionUpvoted += onQuestionUpvoted;
+        sessionContext.PollActivated += onPollActivated;
+        sessionContext.PollClosed += onPollClosed;
+        sessionContext.ResponseReceived += onResponseReceived;
+        sessionContext.QuestionReceived += onQuestionReceived;
+        sessionContext.QuestionAnswered += onQuestionAnswered;
+        sessionContext.QuestionUpvoted += onQuestionUpvoted;
     }
 
     public void Dispose()
     {
-        PollService.PollActivated -= onPollActivated;
-        PollService.PollClosed -= onPollClosed;
-        PollService.ResponseReceived -= onResponseReceived;
-        QuestionService.QuestionReceived -= onQuestionReceived;
-        QuestionService.QuestionAnswered -= onQuestionAnswered;
-        QuestionService.QuestionUpvoted -= onQuestionUpvoted;
+        if (sessionContext is not null)
+        {
+            sessionContext.PollActivated -= onPollActivated;
+            sessionContext.PollClosed -= onPollClosed;
+            sessionContext.ResponseReceived -= onResponseReceived;
+            sessionContext.QuestionReceived -= onQuestionReceived;
+            sessionContext.QuestionAnswered -= onQuestionAnswered;
+            sessionContext.QuestionUpvoted -= onQuestionUpvoted;
+        }
     }
 
     private void RefreshState()
     {
-        session = SessionService.CurrentSession;
-        activeTopic = SessionService.GetActiveTopic();
-        activePoll = PollService.GetActivePoll();
+        if (sessionContext is null) return;
+        session = sessionContext.Session;
+        activeTopic = sessionContext.GetActiveTopic();
+        activePoll = sessionContext.GetActivePoll();
         RefreshPollResults();
-        questions = QuestionService.GetTopQuestions(10);
+        questions = sessionContext.GetTopQuestions(10);
     }
 
     private void RefreshPollResults()
     {
         if (activePoll is not null)
-            pollResults = PollService.GetPollResults(activePoll.Id);
+            pollResults = sessionContext?.GetPollResults(activePoll.Id);
     }
 
-    private async Task HandleVote(string option)
+    private void HandleVote(string option)
     {
-        if (activePoll is null) return;
-        await PollService.SubmitResponseAsync(activePoll.Id, option, attendeeId);
+        if (activePoll is null || sessionContext is null) return;
+        sessionContext.SubmitResponse(activePoll.Id, option, attendeeId);
         RefreshPollResults();
     }
 
-    private async Task SubmitQuestion()
+    private void SubmitQuestion()
     {
-        if (string.IsNullOrWhiteSpace(newQuestion)) return;
-        await QuestionService.SubmitQuestionAsync(newQuestion, activeTopic?.Id, attendeeId);
+        if (string.IsNullOrWhiteSpace(newQuestion) || sessionContext is null) return;
+        sessionContext.SubmitQuestion(newQuestion, activeTopic?.Id, attendeeId);
         newQuestion = "";
-        questions = QuestionService.GetTopQuestions(10);
+        questions = sessionContext.GetTopQuestions(10);
     }
 
-    private async Task Upvote(string questionId)
+    private void Upvote(string questionId)
     {
-        await QuestionService.UpvoteQuestionAsync(questionId);
-        questions = QuestionService.GetTopQuestions(10);
+        if (sessionContext is null) return;
+        sessionContext.UpvoteQuestion(questionId);
+        questions = sessionContext.GetTopQuestions(10);
     }
 
-    private async Task HandleQuestionKeydown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    private void HandleQuestionKeydown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter") await SubmitQuestion();
+        if (e.Key == "Enter") SubmitQuestion();
     }
 }
 

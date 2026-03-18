@@ -1,13 +1,10 @@
-@page "/presenter"
+@page "/presenter/{SessionCode}"
 @layout ConferenceAssistant.Web.Components.Layout.PresenterLayout
 @using ConferenceAssistant.Core.Models
 @using ConferenceAssistant.Core.Services
 @using ConferenceAssistant.Ingestion.Services
 @implements IDisposable
-@inject ISessionService SessionService
-@inject IPollService PollService
-@inject IInsightService InsightService
-@inject IQuestionService QuestionService
+@inject ISessionManager SessionManager
 @inject ISemanticSearchService SemanticSearchService
 @inject IInsightGenerationService InsightGenerationService
 @rendermode InteractiveServer
@@ -15,7 +12,34 @@
 <PageTitle>Presenter Dashboard</PageTitle>
 
 <div class="presenter-page">
-    @if (session is null)
+    @if (!isHostAuthenticated)
+    {
+        <div class="pin-gate">
+            @if (sessionContext is not null)
+            {
+                <h2>🔒 @sessionContext.Session.Title</h2>
+                <p>Enter the host PIN to access the presenter dashboard.</p>
+            }
+            else
+            {
+                <h2>🔒 Session Not Found</h2>
+                <p>No session with code "@SessionCode" exists.</p>
+            }
+            @if (sessionContext is not null)
+            {
+                <div class="pin-form">
+                    <input type="password" maxlength="6" @bind="pinInput" @bind:event="oninput"
+                           placeholder="Host PIN" class="pin-input" @onkeydown="HandlePinKeydown" />
+                    <button class="btn btn-primary" @onclick="ValidatePin">Unlock</button>
+                </div>
+                @if (pinError is not null)
+                {
+                    <p class="pin-error">@pinError</p>
+                }
+            }
+        </div>
+    }
+    else if (session is null)
     {
         <div class="no-session">
             <h2>No session loaded</h2>
@@ -75,7 +99,7 @@
                         🎬 Slides
                         @if (activeSlide is not null)
                         {
-                            <span class="tab-badge">@(SessionService.ActiveSlideIndex + 1)/@SessionService.TotalSlides</span>
+                            <span class="tab-badge">@((sessionContext?.ActiveSlideIndex ?? -1) + 1)/@(sessionContext?.TotalSlides ?? 0)</span>
                         }
                     </button>
                     <button class="tab-btn @(activeTab == "polls" ? "active" : "")" @onclick='() => SetActiveTab("polls")'>
@@ -116,9 +140,9 @@
                                 }
 
                                 <div class="slide-nav-controls">
-                                    <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@(SessionService.ActiveSlideIndex <= 0)">◀ Prev</button>
-                                    <span class="slide-progress">Slide @(SessionService.ActiveSlideIndex + 1) / @SessionService.TotalSlides</span>
-                                    <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@(SessionService.ActiveSlideIndex >= SessionService.TotalSlides - 1)">Next ▶</button>
+                                    <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) <= 0)">◀ Prev</button>
+                                    <span class="slide-progress">Slide @((sessionContext?.ActiveSlideIndex ?? -1) + 1) / @(sessionContext?.TotalSlides ?? 0)</span>
+                                    <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) >= (sessionContext?.TotalSlides ?? 0) - 1)">Next ▶</button>
                                 </div>
                             </div>
                         }
@@ -347,6 +371,14 @@
 </div>
 
 @code {
+    [Parameter] public string SessionCode { get; set; } = "";
+
+    // PIN gate state
+    private bool isHostAuthenticated = false;
+    private string pinInput = "";
+    private string? pinError;
+    private SessionContext? sessionContext;
+
     private ConferenceSession? session;
     private SessionTopic? activeTopic;
     private Poll? activePoll;
@@ -390,9 +422,35 @@
     private Action<Insight>? onInsightGenerated;
     private Timer? _knowledgeBaseTimer;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        session = SessionService.CurrentSession;
+        sessionContext = SessionManager.GetSession(SessionCode);
+    }
+
+    private void ValidatePin()
+    {
+        if (SessionManager.ValidateHostPin(SessionCode, pinInput))
+        {
+            isHostAuthenticated = true;
+            pinError = null;
+            sessionContext = SessionManager.GetSession(SessionCode);
+            InitializeSession();
+        }
+        else
+        {
+            pinError = "Invalid PIN. Please try again.";
+        }
+    }
+
+    private void HandlePinKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") ValidatePin();
+    }
+
+    private async void InitializeSession()
+    {
+        if (sessionContext is null) return;
+        session = sessionContext.Session;
         RefreshState();
 
         try { knowledgeBaseCount = await SemanticSearchService.GetRecordCountAsync(); }
@@ -405,66 +463,72 @@
         onQuestionAnswered = _ => InvokeAsync(() => { RefreshQuestions(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
         onQuestionUpvoted = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
         onInsightGenerated = _ => InvokeAsync(() => { RefreshInsights(); RefreshKnowledgeBaseCount(); StateHasChanged(); });
-        onSlideChanged = _ => InvokeAsync(() => { activeSlide = SessionService.ActiveSlide; nextSlide = SessionService.GetNextSlide(); StateHasChanged(); });
+        onSlideChanged = _ => InvokeAsync(() => { activeSlide = sessionContext?.ActiveSlide; nextSlide = sessionContext?.GetNextSlide(); StateHasChanged(); });
 
-        PollService.ResponseReceived += onResponseReceived;
-        PollService.PollActivated += onPollActivated;
-        PollService.PollClosed += onPollClosed;
-        QuestionService.QuestionReceived += onQuestionReceived;
-        QuestionService.QuestionAnswered += onQuestionAnswered;
-        QuestionService.QuestionUpvoted += onQuestionUpvoted;
-        InsightService.InsightGenerated += onInsightGenerated;
-        SessionService.SlideChanged += onSlideChanged;
+        sessionContext.ResponseReceived += onResponseReceived;
+        sessionContext.PollActivated += onPollActivated;
+        sessionContext.PollClosed += onPollClosed;
+        sessionContext.QuestionReceived += onQuestionReceived;
+        sessionContext.QuestionAnswered += onQuestionAnswered;
+        sessionContext.QuestionUpvoted += onQuestionUpvoted;
+        sessionContext.InsightGenerated += onInsightGenerated;
+        sessionContext.SlideChanged += onSlideChanged;
 
         // Periodic refresh of knowledge base count (catches background ingestion)
         _knowledgeBaseTimer = new Timer(_ =>
             InvokeAsync(() => { RefreshKnowledgeBaseCount(); StateHasChanged(); }),
             null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+
+        await InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()
     {
         _knowledgeBaseTimer?.Dispose();
-        PollService.ResponseReceived -= onResponseReceived;
-        PollService.PollActivated -= onPollActivated;
-        PollService.PollClosed -= onPollClosed;
-        QuestionService.QuestionReceived -= onQuestionReceived;
-        QuestionService.QuestionAnswered -= onQuestionAnswered;
-        QuestionService.QuestionUpvoted -= onQuestionUpvoted;
-        InsightService.InsightGenerated -= onInsightGenerated;
-        SessionService.SlideChanged -= onSlideChanged;
+        if (sessionContext is not null)
+        {
+            sessionContext.ResponseReceived -= onResponseReceived;
+            sessionContext.PollActivated -= onPollActivated;
+            sessionContext.PollClosed -= onPollClosed;
+            sessionContext.QuestionReceived -= onQuestionReceived;
+            sessionContext.QuestionAnswered -= onQuestionAnswered;
+            sessionContext.QuestionUpvoted -= onQuestionUpvoted;
+            sessionContext.InsightGenerated -= onInsightGenerated;
+            sessionContext.SlideChanged -= onSlideChanged;
+        }
     }
 
     private void RefreshState()
     {
-        session = SessionService.CurrentSession;
-        activeTopic = SessionService.GetActiveTopic();
-        activeSlide = SessionService.ActiveSlide;
-        nextSlide = SessionService.GetNextSlide();
+        if (sessionContext is null) return;
+        session = sessionContext.Session;
+        activeTopic = sessionContext.GetActiveTopic();
+        activeSlide = sessionContext.ActiveSlide;
+        nextSlide = sessionContext.GetNextSlide();
 
         var previousPoll = activePoll;
-        activePoll = PollService.GetActivePoll();
+        activePoll = sessionContext.GetActivePoll();
         RefreshPollResults();
 
         // Track the last closed poll for displaying final results
         if (previousPoll is not null && previousPoll.Status != PollStatus.Closed && activePoll is null)
         {
             closedPoll = previousPoll;
-            closedPollResults = PollService.GetPollResults(previousPoll.Id);
+            closedPollResults = sessionContext.GetPollResults(previousPoll.Id);
         }
 
         if (activeTopic is not null)
         {
-            topicInsights = InsightService.GetInsightsForTopic(activeTopic.Id);
-            topicQuestions = QuestionService.GetQuestionsForTopic(activeTopic.Id);
+            topicInsights = sessionContext.GetInsightsForTopic(activeTopic.Id);
+            topicQuestions = sessionContext.GetQuestionsForTopic(activeTopic.Id);
 
             // Track most recently closed poll for this topic
-            var topicPolls = PollService.GetPollsForTopic(activeTopic.Id);
+            var topicPolls = sessionContext.GetPollsForTopic(activeTopic.Id);
             var lastClosed = topicPolls.LastOrDefault(p => p.Status == PollStatus.Closed);
             if (lastClosed is not null && activePoll is null)
             {
                 closedPoll = lastClosed;
-                closedPollResults = PollService.GetPollResults(lastClosed.Id);
+                closedPollResults = sessionContext.GetPollResults(lastClosed.Id);
             }
         }
         else
@@ -479,19 +543,19 @@
     private void RefreshPollResults()
     {
         if (activePoll is not null)
-            activePollResults = PollService.GetPollResults(activePoll.Id);
+            activePollResults = sessionContext?.GetPollResults(activePoll.Id);
     }
 
     private void RefreshQuestions()
     {
         if (activeTopic is not null)
-            topicQuestions = QuestionService.GetQuestionsForTopic(activeTopic.Id);
+            topicQuestions = sessionContext?.GetQuestionsForTopic(activeTopic.Id) ?? [];
     }
 
     private void RefreshInsights()
     {
         if (activeTopic is not null)
-            topicInsights = InsightService.GetInsightsForTopic(activeTopic.Id);
+            topicInsights = sessionContext?.GetInsightsForTopic(activeTopic.Id) ?? [];
     }
 
     private async void RefreshKnowledgeBaseCount()
@@ -500,29 +564,29 @@
         catch { /* swallow */ }
     }
 
-    private async Task StartSession()
+    private void StartSession()
     {
-        await SessionService.StartSessionAsync();
+        sessionContext?.StartSession();
         RefreshState();
     }
 
-    private async Task EndSession()
+    private void EndSession()
     {
-        await SessionService.EndSessionAsync();
+        sessionContext?.EndSession();
         RefreshState();
     }
 
-    private async Task ActivateTopic(string topicId)
+    private void ActivateTopic(string topicId)
     {
-        await SessionService.ActivateTopicAsync(topicId);
+        sessionContext?.ActivateTopic(topicId);
         closedPoll = null;
         closedPollResults = null;
         RefreshState();
     }
 
-    private async Task CompleteTopic(string topicId)
+    private void CompleteTopic(string topicId)
     {
-        await SessionService.CompleteTopicAsync(topicId);
+        sessionContext?.CompleteTopic(topicId);
         RefreshState();
     }
 
@@ -530,21 +594,21 @@
 
     private async Task AutoGeneratePoll()
     {
-        if (activeTopic is null) return;
+        if (activeTopic is null || sessionContext is null) return;
         // Placeholder: use first suggested poll if available, otherwise no-op
         var suggested = activeTopic.SuggestedPolls.FirstOrDefault();
         if (suggested is null) return;
-        var poll = await PollService.CreatePollAsync(activeTopic.Id, suggested.Question, suggested.Options, PollSource.Generated);
-        await PollService.ActivatePollAsync(poll.Id);
+        var poll = sessionContext.CreatePoll(activeTopic.Id, suggested.Question, suggested.Options, PollSource.Generated);
+        sessionContext.ActivatePoll(poll.Id);
         RefreshState();
     }
 
-    private async Task LaunchSelectedSuggestedPoll()
+    private void LaunchSelectedSuggestedPoll()
     {
-        if (activeTopic is null || selectedSuggestedPollIndex < 0) return;
+        if (activeTopic is null || selectedSuggestedPollIndex < 0 || sessionContext is null) return;
         var sp = activeTopic.SuggestedPolls[selectedSuggestedPollIndex];
-        var poll = await PollService.CreatePollAsync(activeTopic.Id, sp.Question, sp.Options, PollSource.Suggested);
-        await PollService.ActivatePollAsync(poll.Id);
+        var poll = sessionContext.CreatePoll(activeTopic.Id, sp.Question, sp.Options, PollSource.Suggested);
+        sessionContext.ActivatePoll(poll.Id);
         selectedSuggestedPollIndex = -1;
         RefreshState();
     }
@@ -577,25 +641,25 @@
         !string.IsNullOrWhiteSpace(customPollQuestion)
         && customPollOptions.Count(o => !string.IsNullOrWhiteSpace(o)) >= 2;
 
-    private async Task LaunchCustomPoll()
+    private void LaunchCustomPoll()
     {
-        if (activeTopic is null || !IsCustomPollValid) return;
+        if (activeTopic is null || !IsCustomPollValid || sessionContext is null) return;
         var options = customPollOptions.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList();
-        var poll = await PollService.CreatePollAsync(activeTopic.Id, customPollQuestion.Trim(), options, PollSource.Custom);
-        await PollService.ActivatePollAsync(poll.Id);
+        var poll = sessionContext.CreatePoll(activeTopic.Id, customPollQuestion.Trim(), options, PollSource.Custom);
+        sessionContext.ActivatePoll(poll.Id);
         showCustomPollForm = false;
         RefreshState();
     }
 
-    private async Task ActivatePollAsync(string pollId)
+    private void ActivatePollAsync(string pollId)
     {
-        await PollService.ActivatePollAsync(pollId);
+        sessionContext?.ActivatePoll(pollId);
         RefreshState();
     }
 
-    private async Task ClosePollAsync(string pollId)
+    private void ClosePollAsync(string pollId)
     {
-        await PollService.ClosePollAsync(pollId);
+        sessionContext?.ClosePoll(pollId);
         RefreshState();
     }
 
@@ -618,20 +682,20 @@
         answerText = "";
     }
 
-    private async Task SubmitAnswer(string questionId)
+    private void SubmitAnswer(string questionId)
     {
         if (string.IsNullOrWhiteSpace(answerText)) return;
-        await QuestionService.AnswerQuestionAsync(questionId, answerText.Trim());
+        sessionContext?.AnswerQuestion(questionId, answerText.Trim());
         answeringQuestionId = null;
         answerText = "";
 
         if (activeTopic is not null)
-            topicQuestions = QuestionService.GetQuestionsForTopic(activeTopic.Id);
+            topicQuestions = sessionContext?.GetQuestionsForTopic(activeTopic.Id) ?? [];
     }
 
     private async Task GenerateInsightsManually()
     {
-        if (activeTopic is null) return;
+        if (activeTopic is null || sessionContext is null) return;
         isGeneratingInsights = true;
         StateHasChanged();
 
@@ -640,7 +704,7 @@
             await InsightGenerationService.GenerateTopicInsightsAsync(activeTopic.Id);
 
             // Also generate poll insights for any closed polls in this topic
-            var closedPolls = PollService.GetPollsForTopic(activeTopic.Id)
+            var closedPolls = sessionContext.GetPollsForTopic(activeTopic.Id)
                 .Where(p => p.Status == PollStatus.Closed);
             foreach (var p in closedPolls)
             {
@@ -659,27 +723,27 @@
 
     private void SetActiveTab(string tab) { activeTab = tab; }
 
-    private async Task AdvanceSlideAsync()
+    private void AdvanceSlideAsync()
     {
-        await SessionService.AdvanceSlideAsync();
+        sessionContext?.AdvanceSlide();
         RefreshState();
     }
 
-    private async Task GoBackSlideAsync()
+    private void GoBackSlideAsync()
     {
-        await SessionService.GoBackSlideAsync();
+        sessionContext?.GoBackSlide();
         RefreshState();
     }
 
-    private async Task HandleSlideKeydown(KeyboardEventArgs e)
+    private void HandleSlideKeydown(KeyboardEventArgs e)
     {
         if (e.Key is "ArrowRight" or " ")
         {
-            await AdvanceSlideAsync();
+            AdvanceSlideAsync();
         }
         else if (e.Key is "ArrowLeft")
         {
-            await GoBackSlideAsync();
+            GoBackSlideAsync();
         }
     }
 }
@@ -751,5 +815,55 @@
     .btn-insight:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    /* PIN gate */
+    .pin-gate {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 80vh;
+        text-align: center;
+    }
+
+    .pin-gate h2 {
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .pin-gate p {
+        opacity: 0.6;
+        margin-bottom: 1.5rem;
+    }
+
+    .pin-form {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .pin-input {
+        width: 150px;
+        padding: 0.75rem 1rem;
+        font-size: 1.5rem;
+        text-align: center;
+        letter-spacing: 0.3em;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 0.5rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+    }
+
+    .pin-input::placeholder {
+        font-size: 0.9rem;
+        letter-spacing: normal;
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .pin-error {
+        color: #ff6b6b;
+        margin-top: 0.75rem;
+        font-size: 0.9rem;
     }
 </style>

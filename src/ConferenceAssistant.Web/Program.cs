@@ -23,6 +23,7 @@ builder.Services.AddRazorComponents()
 // ---------------------------------------------------------------------------
 // Core Services — in-memory, singleton (shared state across all Blazor circuits)
 // ---------------------------------------------------------------------------
+builder.Services.AddSingleton<ISessionManager, SessionManager>();
 builder.Services.AddSingleton<ISessionService, SessionService>();
 builder.Services.AddSingleton<IPollService, PollService>();
 builder.Services.AddSingleton<IQuestionService, QuestionService>();
@@ -111,138 +112,142 @@ app.MapMcp("/mcp");
 app.MapDefaultEndpoints();
 
 // ---------------------------------------------------------------------------
-// Wire up AI-powered Q&A: auto-answer when audience submits a question
+// Wire up AI-powered pipelines via SessionCreated event
+// When any session is created (startup demo or user-created), wire AI handlers
 // ---------------------------------------------------------------------------
-var questionService = app.Services.GetRequiredService<IQuestionService>();
+var sessionManager = app.Services.GetRequiredService<ISessionManager>();
 var questionAnswering = app.Services.GetRequiredService<IQuestionAnsweringService>();
-questionService.QuestionReceived += q =>
-{
-    _ = Task.Run(() => questionAnswering.GenerateAiAnswerAsync(q.Id, q.Text, q.TopicId));
-};
-
-// ---------------------------------------------------------------------------
-// Wire up real-time ingestion: feed new data into the vector store as it arrives
-// ---------------------------------------------------------------------------
-var pollService = app.Services.GetRequiredService<IPollService>();
-var insightService = app.Services.GetRequiredService<IInsightService>();
 var ingestionService = app.Services.GetRequiredService<IIngestionService>();
 var insightGen = app.Services.GetRequiredService<IInsightGenerationService>();
 
-// Ingest poll results when a poll is closed + generate poll insights
-pollService.PollClosed += poll =>
+sessionManager.SessionCreated += ctx =>
 {
-    _ = Task.Run(async () =>
+    app.Logger.LogInformation("Session created: {Code} — {Title}", ctx.Session.SessionCode, ctx.Session.Title);
+
+    // Auto-answer audience questions via AI
+    ctx.QuestionReceived += q =>
     {
-        try
+        _ = Task.Run(() => questionAnswering.GenerateAiAnswerAsync(q.Id, q.Text, q.TopicId));
+    };
+
+    // Ingest poll results when a poll is closed + generate poll insights
+    ctx.PollClosed += poll =>
+    {
+        _ = Task.Run(async () =>
         {
-            var results = pollService.GetPollResults(poll.Id);
-            if (results.Count > 0)
+            try
             {
-                await ingestionService.IngestResponseAsync(poll.Id, poll.TopicId, poll.Question, results);
-                app.Logger.LogInformation("Ingested poll results for {PollId} into knowledge base", poll.Id);
+                var results = ctx.GetPollResults(poll.Id);
+                if (results.Count > 0)
+                {
+                    await ingestionService.IngestResponseAsync(poll.Id, poll.TopicId, poll.Question, results);
+                    app.Logger.LogInformation("Ingested poll results for {PollId} into knowledge base", poll.Id);
+                }
+                await insightGen.GeneratePollInsightsAsync(poll.Id);
             }
-            await insightGen.GeneratePollInsightsAsync(poll.Id);
-        }
-        catch (Exception ex)
-        {
-            app.Logger.LogWarning(ex, "Failed to ingest poll results for {PollId}", poll.Id);
-        }
-    });
-};
-
-// Ingest Q&A pairs when a question is answered
-questionService.QuestionAnswered += q =>
-{
-    _ = Task.Run(async () =>
-    {
-        try
-        {
-            var latestAnswer = q.Answers.LastOrDefault();
-            if (latestAnswer is null) return;
-            var badge = latestAnswer.IsAiGenerated ? "[AI]" : "[Human]";
-            var content = $"Q: {q.Text}\nA {badge}: {latestAnswer.Text}";
-            await ingestionService.IngestExternalContentAsync("qa", content);
-            app.Logger.LogInformation("Ingested Q&A pair into knowledge base ({Badge})", badge);
-        }
-        catch (Exception ex)
-        {
-            app.Logger.LogWarning(ex, "Failed to ingest Q&A pair");
-        }
-    });
-};
-
-// Ingest insights into the knowledge base when generated
-insightService.InsightGenerated += insight =>
-{
-    _ = Task.Run(async () =>
-    {
-        try
-        {
-            await ingestionService.IngestInsightAsync(insight.TopicId ?? "general", insight.Content);
-            app.Logger.LogInformation("Ingested insight into knowledge base");
-        }
-        catch (Exception ex)
-        {
-            app.Logger.LogWarning(ex, "Failed to ingest insight");
-        }
-    });
-};
-
-// Generate topic summary + gap insights when a topic is completed
-var sessionSvc = app.Services.GetRequiredService<ISessionService>();
-sessionSvc.TopicCompleted += topicId =>
-{
-    _ = Task.Run(() => insightGen.GenerateTopicInsightsAsync(topicId));
-};
-
-// Ingest questions immediately when received (before they're answered)
-var questionSvc = app.Services.GetRequiredService<IQuestionService>();
-questionSvc.QuestionReceived += q =>
-{
-    _ = Task.Run(async () =>
-    {
-        try
-        {
-            await ingestionService.IngestQuestionAsync(q.Id, q.Text, q.TopicId);
-            app.Logger.LogInformation("Ingested question {QuestionId} into knowledge base", q.Id);
-        }
-        catch (Exception ex)
-        {
-            app.Logger.LogWarning(ex, "Failed to ingest question {QuestionId}", q.Id);
-        }
-    });
-};
-
-// Generate session summary + ingest on session end
-sessionSvc.SessionEnded += () =>
-{
-    _ = Task.Run(async () =>
-    {
-        try
-        {
-            var workflow = app.Services.GetRequiredService<SessionSummaryWorkflow>();
-            var summary = await workflow.ExecuteAsync();
-            if (!string.IsNullOrWhiteSpace(summary))
+            catch (Exception ex)
             {
-                await ingestionService.IngestSessionSummaryAsync(summary);
-                app.Logger.LogInformation("Session summary generated and ingested into knowledge base");
+                app.Logger.LogWarning(ex, "Failed to process poll close for {PollId}", poll.Id);
             }
-        }
-        catch (Exception ex)
+        });
+    };
+
+    // Ingest Q&A pairs when a question is answered
+    ctx.QuestionAnswered += q =>
+    {
+        _ = Task.Run(async () =>
         {
-            app.Logger.LogWarning(ex, "Failed to generate/ingest session summary");
-        }
-    });
+            try
+            {
+                var latestAnswer = q.Answers.LastOrDefault();
+                if (latestAnswer is null) return;
+                var badge = latestAnswer.IsAiGenerated ? "[AI]" : "[Human]";
+                var content = $"Q: {q.Text}\nA {badge}: {latestAnswer.Text}";
+                await ingestionService.IngestExternalContentAsync("qa", content);
+                app.Logger.LogInformation("Ingested Q&A pair into knowledge base ({Badge})", badge);
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Failed to ingest Q&A pair");
+            }
+        });
+    };
+
+    // Ingest insights into the knowledge base when generated
+    ctx.InsightGenerated += insight =>
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ingestionService.IngestInsightAsync(insight.TopicId ?? "general", insight.Content);
+                app.Logger.LogInformation("Ingested insight into knowledge base");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Failed to ingest insight");
+            }
+        });
+    };
+
+    // Generate topic summary + gap insights when a topic is completed
+    ctx.TopicCompleted += topicId =>
+    {
+        _ = Task.Run(() => insightGen.GenerateTopicInsightsAsync(topicId));
+    };
+
+    // Ingest questions immediately when received (before they're answered)
+    ctx.QuestionReceived += q =>
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ingestionService.IngestQuestionAsync(q.Id, q.Text, q.TopicId);
+                app.Logger.LogInformation("Ingested question {QuestionId} into knowledge base", q.Id);
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Failed to ingest question {QuestionId}", q.Id);
+            }
+        });
+    };
+
+    // Generate session summary on session end
+    ctx.SessionEnded += () =>
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var workflow = app.Services.GetRequiredService<SessionSummaryWorkflow>();
+                var summary = await workflow.ExecuteAsync();
+                if (!string.IsNullOrWhiteSpace(summary))
+                {
+                    await ingestionService.IngestSessionSummaryAsync(summary);
+                    app.Logger.LogInformation("Session summary generated and ingested into knowledge base");
+                }
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Failed to generate/ingest session summary");
+            }
+        });
+    };
 };
 
 // ---------------------------------------------------------------------------
-// Startup: Load session, ingest outline, initialize MCP clients
+// Startup: Load default demo session, ingest outline, initialize MCP clients
 // ---------------------------------------------------------------------------
 var dataRoot = Path.Combine(app.Environment.ContentRootPath, "..", "..", "data");
 
+// Create the default demo session (this fires SessionCreated, which wires all AI pipelines)
 var sessionService = app.Services.GetRequiredService<ISessionService>();
 await sessionService.LoadSessionAsync(Path.Combine(dataRoot, "seed-topics.json"));
-app.Logger.LogInformation("Session loaded: {Title}", sessionService.CurrentSession?.Title);
+app.Logger.LogInformation("Default session loaded: {Title} (code: {Code}, PIN: {Pin})",
+    sessionService.CurrentSession?.Title,
+    sessionService.CurrentSession?.SessionCode,
+    "0000");
 
 // Load slides from Markdown
 var slidesPath = Path.Combine(dataRoot, "slides.md");

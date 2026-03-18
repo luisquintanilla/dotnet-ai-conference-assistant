@@ -1,0 +1,282 @@
+@page "/create"
+@layout ConferenceAssistant.Web.Components.Layout.HomeLayout
+@using ConferenceAssistant.Core.Models
+@using ConferenceAssistant.Core.Services
+@inject ISessionManager SessionManager
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment Environment
+@rendermode InteractiveServer
+
+<PageTitle>Create Session — Conference Pulse</PageTitle>
+
+<div class="create-page">
+    <div class="create-card">
+        <h1>🎯 Create a Session</h1>
+        <p class="subtitle">Set up a new presentation session for your audience.</p>
+
+        @if (errorMessage is not null)
+        {
+            <div class="error-banner">@errorMessage</div>
+        }
+
+        <div class="form-group">
+            <label>Session Title *</label>
+            <input type="text" @bind="title" placeholder="e.g., The Microsoft AI Stack for .NET" class="form-input" />
+        </div>
+
+        <div class="form-group">
+            <label>Session Code <span class="hint">(optional — auto-generated if blank)</span></label>
+            <input type="text" @bind="sessionCode" placeholder="e.g., AICONF2026" class="form-input" maxlength="20" />
+        </div>
+
+        <div class="form-group">
+            <label>Host PIN * <span class="hint">(4-6 digits, share only with co-presenters)</span></label>
+            <input type="text" @bind="hostPin" placeholder="e.g., 4521" class="form-input pin-field" maxlength="6" />
+        </div>
+
+        <div class="form-group">
+            <label>Description <span class="hint">(optional)</span></label>
+            <textarea @bind="description" placeholder="Brief description of your session..." class="form-input form-textarea" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Session Template</label>
+            <select @bind="template" class="form-input">
+                <option value="default">🎤 .NET AI Conference (pre-loaded topics + slides)</option>
+                <option value="blank">📝 Blank Session (start from scratch)</option>
+            </select>
+        </div>
+
+        <div class="form-actions">
+            <a href="/" class="btn btn-back">← Back</a>
+            <button class="btn btn-create" @onclick="CreateSessionAsync" disabled="@isCreating">
+                @if (isCreating)
+                {
+                    <span>Creating...</span>
+                }
+                else
+                {
+                    <span>🚀 Create Session</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string title = "";
+    private string sessionCode = "";
+    private string hostPin = "";
+    private string description = "";
+    private string template = "default";
+    private string? errorMessage;
+    private bool isCreating;
+
+    private async Task CreateSessionAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            errorMessage = "Session title is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(hostPin) || hostPin.Length < 4 || !hostPin.All(char.IsDigit))
+        {
+            errorMessage = "Host PIN must be 4-6 digits.";
+            return;
+        }
+
+        isCreating = true;
+        try
+        {
+            SessionContext context;
+            var code = string.IsNullOrWhiteSpace(sessionCode) ? null : sessionCode.Trim();
+
+            if (template == "default")
+            {
+                var dataRoot = Path.Combine(Environment.ContentRootPath, "..", "..", "data");
+                var seedPath = Path.Combine(dataRoot, "seed-topics.json");
+
+                if (File.Exists(seedPath))
+                {
+                    var json = await File.ReadAllTextAsync(seedPath);
+                    context = SessionManager.CreateSessionFromSeed(json, hostPin, code);
+                    if (!string.IsNullOrWhiteSpace(title))
+                        context.Session.Title = title;
+                    if (!string.IsNullOrWhiteSpace(description))
+                        context.Session.Description = description;
+
+                    var slidesPath = Path.Combine(Path.GetDirectoryName(seedPath)!, "slides.md");
+                    if (File.Exists(slidesPath))
+                    {
+                        await SessionManager.LoadSlidesForSessionAsync(context.Session.SessionCode, slidesPath);
+                    }
+                }
+                else
+                {
+                    context = SessionManager.CreateSession(title, hostPin, code, description);
+                }
+            }
+            else
+            {
+                context = SessionManager.CreateSession(title, hostPin, code, description);
+            }
+
+            Navigation.NavigateTo($"/presenter/{context.Session.SessionCode}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            errorMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to create session: {ex.Message}";
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+}
+
+<style>
+    .create-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+    }
+
+    .create-card {
+        width: 100%;
+        max-width: 520px;
+        padding: 2.5rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+    }
+
+    .create-card h1 {
+        font-size: 1.75rem;
+        margin: 0 0 0.25rem;
+        color: white;
+    }
+
+    .subtitle {
+        opacity: 0.5;
+        font-size: 0.9rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .error-banner {
+        padding: 0.6rem 1rem;
+        background: rgba(255, 107, 107, 0.15);
+        border: 1px solid rgba(255, 107, 107, 0.3);
+        border-radius: 0.5rem;
+        color: #ff6b6b;
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 0.4rem;
+        color: rgba(255, 255, 255, 0.8);
+    }
+
+    .hint {
+        font-weight: 400;
+        opacity: 0.5;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.5rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+    }
+
+    .form-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #e94560;
+    }
+
+    .form-textarea {
+        resize: vertical;
+        font-family: inherit;
+    }
+
+    .pin-field {
+        width: 150px;
+        letter-spacing: 0.2em;
+        font-size: 1.1rem;
+    }
+
+    select.form-input {
+        cursor: pointer;
+    }
+
+    select.form-input option {
+        background: #1a1a2e;
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1.5rem;
+    }
+
+    .btn {
+        padding: 0.6rem 1.25rem;
+        border: none;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: white;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+
+    .btn-back {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-back:hover {
+        border-color: rgba(255, 255, 255, 0.3);
+        color: white;
+    }
+
+    .btn-create {
+        background: #e94560;
+        padding: 0.7rem 1.5rem;
+    }
+
+    .btn-create:hover {
+        background: #d63851;
+    }
+
+    .btn-create:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+</style>

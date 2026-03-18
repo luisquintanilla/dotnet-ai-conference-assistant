@@ -1,6 +1,6 @@
 # 🧪 Conference Pulse — Smoke Test & Getting Started Guide
 
-> **Updated for Aspire AI integration + real-time ingestion + AI answers + insight generation**
+> **Updated for multi-session architecture + Aspire AI integration + real-time ingestion + AI answers + insight generation**
 > All AI configuration flows through Aspire's `AddAzureOpenAI` + `RunAsExisting` + user secrets.
 
 ---
@@ -98,9 +98,14 @@ info: Aspire.Hosting.DistributedApplication[0]
       Dashboard is running at: http://localhost:18888/login?t=<token>
       ...
 info: ConferenceAssistant.Web
+      Default session created: XXXXXXXX (PIN: 0000)
       Session loaded: The Microsoft AI Stack for .NET
       Ingested 12 outline chunks into knowledge base
 ```
+
+> 📌 **Note the session code** in the startup logs (e.g., `XXXXXXXX`). The default
+> demo session is auto-created with PIN **`0000`** and an auto-generated session code.
+> You'll need this code to access presenter, display, and attendee views.
 
 ### Key URLs
 
@@ -108,6 +113,7 @@ info: ConferenceAssistant.Web
 |-----|------|
 | **Aspire Dashboard** | `http://localhost:18888` (shown in console output) |
 | **Web App** | Check the dashboard → `web` resource → click the endpoint (typically `https://localhost:<port>`) |
+| **Home / Sessions** | `/` — Landing page showing active sessions + "Create New Session" button |
 
 > The web app port is **dynamically assigned by Aspire** — don't guess it.
 > Always get it from the Aspire dashboard's Resources tab.
@@ -138,23 +144,28 @@ All non-AI features (manual polls, voting, questions, topic management) work fin
 
 ## 3. Home Page — `/`
 
-The homepage uses its own dedicated layout (no sidebar navigation).
+The homepage serves as the **session hub** — it lists all active sessions and lets you create new ones.
 
 | # | Check | Expected |
 |---|-------|----------|
-| 1 | Page loads | Conference Pulse landing page appears **without** the template sidebar |
-| 2 | Session title displayed | Dynamic session title from the service (e.g., "The Microsoft AI Stack for .NET") |
-| 3 | Session status badge | Status badge is visible (e.g., "Setup" or "Live") |
-| 4 | Three navigation cards | Presenter Dashboard, Join Session, Projection Display |
-| 5 | Click "Presenter Dashboard" | Navigates to `/presenter` |
-| 6 | Click "Join Session" | Navigates to `/session/DOTNETAI-CONF` |
-| 7 | Click "Projection Display" | Navigates to `/display` |
+| 1 | Page loads | Conference Pulse landing page appears |
+| 2 | Active sessions list | Default session visible (auto-created at startup) |
+| 3 | Session cards | Each shows title, session code, status, and attendee count |
+| 4 | "Create New Session" button | Visible and navigates to `/create` |
+| 5 | Click a session card | Expands/shows join options (Presenter, Attendee, Display) |
+| 6 | Click "Presenter Dashboard" | Navigates to `/presenter/{SessionCode}` |
+| 7 | Click "Join Session" | Navigates to `/session/{SessionCode}` |
+| 8 | Click "Projection Display" | Navigates to `/display/{SessionCode}` |
 
 ---
 
-## 4. Presenter Dashboard — `/presenter`
+## 4. Presenter Dashboard — `/presenter/{SessionCode}`
 
 Open this in your "speaker laptop" browser window.
+
+> 🔐 **PIN Gate:** Navigating to `/presenter/{SessionCode}` first shows a PIN input.
+> Enter the host PIN (default session uses `0000`) to unlock the full dashboard.
+> PIN validation is per Blazor circuit (browser tab) — no cookies or tokens.
 
 The presenter uses a **split view** layout:
 - **Top half** — Slide zone: slide preview + speaker notes (always visible)
@@ -221,9 +232,10 @@ Tab badges show the question count and an active poll indicator.
 
 ---
 
-## 5. Attendee Session — `/session/DOTNETAI-CONF`
+## 5. Attendee Session — `/session/{SessionCode}`
 
-Open in a second browser window (or phone).
+Open in a second browser window (or phone). Replace `{SessionCode}` with the
+code from the startup logs (e.g., `/session/XXXXXXXX`).
 
 ### 5a. Before Go Live
 
@@ -262,7 +274,7 @@ Open in a second browser window (or phone).
 
 ---
 
-## 6. Projection Display — `/display`
+## 6. Projection Display — `/display/{SessionCode}`
 
 Open in a third browser window (simulates projector/big screen).
 
@@ -276,7 +288,59 @@ Open in a third browser window (simulates projector/big screen).
 
 ---
 
-## 7. MCP Server — `/mcp`
+## 7. Multi-Session Testing
+
+The app supports multiple concurrent sessions. Each session has its own code, host PIN, and isolated state.
+
+### 7a. Create a New Session
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Navigate to `/` (home page) | Active sessions list visible |
+| 2 | Click **"Create New Session"** | Navigates to `/create` |
+| 3 | Fill in title (e.g., "My Test Session") | Title field accepts input |
+| 4 | Optionally set a custom session code | Auto-generated if left blank |
+| 5 | Set a host PIN (4-6 digits) | Required field |
+| 6 | Optionally add description and template | Optional fields |
+| 7 | Click **Create** | Redirects to home page; new session appears in list |
+
+### 7b. Join as Attendee
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | From home page, find your new session | Session card visible |
+| 2 | Click **"Join Session"** (or navigate to `/session/{YourCode}`) | Attendee view loads for that session |
+| 3 | Session state is isolated | Polls, questions, topics are specific to this session |
+
+### 7c. Open Presenter View with PIN
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Navigate to `/presenter/{YourCode}` | PIN gate appears — input field for host PIN |
+| 2 | Enter incorrect PIN | Error message, dashboard stays locked |
+| 3 | Enter correct PIN | Full presenter dashboard unlocks |
+| 4 | PIN persists per browser tab | Refreshing the tab does NOT re-prompt (same Blazor circuit) |
+| 5 | Open a new tab to same URL | PIN gate appears again (new circuit) |
+
+### 7d. Open Display View
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Navigate to `/display/{YourCode}` | Projection view loads for that session |
+| 2 | Display is session-specific | Shows only polls/slides/insights for that session code |
+
+### 7e. Concurrent Sessions
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Create two sessions with different codes | Both appear on home page |
+| 2 | Open presenter for each in separate tabs | Each has independent state |
+| 3 | Launch a poll in session A | Only session A attendees/display see the poll |
+| 4 | Submit a question in session B | Only session B presenter sees the question |
+
+---
+
+## 8. MCP Server — `/mcp`
 
 The app exposes 10 MCP tools via Streamable HTTP. Get the base URL from
 the Aspire dashboard (the `web` resource endpoint).
@@ -360,7 +424,7 @@ Invoke-RestMethod -Uri "$baseUrl/mcp" `
 
 ---
 
-## 8. Real-Time Ingestion — Knowledge Base Growth
+## 9. Real-Time Ingestion — Knowledge Base Growth
 
 The knowledge base starts with ~20 outline chunks and **grows in real-time** as the
 session progresses. This is the "snowball effect" — the core demo narrative.
@@ -389,7 +453,7 @@ session progresses. This is the "snowball effect" — the core demo narrative.
 
 ---
 
-## 9. Insight Generation — Auto-Analysis
+## 10. Insight Generation — Auto-Analysis
 
 Insights are **automatically generated** by AI when:
 
@@ -409,7 +473,7 @@ Insights are **automatically generated** by AI when:
 
 ---
 
-## 10. MCP with VS Code / Copilot CLI
+## 11. MCP with VS Code / Copilot CLI
 
 ### VS Code Configuration
 
@@ -437,17 +501,19 @@ The repo includes `.vscode/mcp.json` pre-configured:
 
 ---
 
-## 11. Full Demo Flow (End-to-End)
+## 12. Full Demo Flow (End-to-End)
 
 This simulates the actual live presentation:
 
 ```
 SETUP:
   1. Open Aspire dashboard: http://localhost:18888
-  2. Open 3 browser tabs from the web resource endpoint:
-     - Tab 1: /presenter              (your laptop — speaker controls)
-     - Tab 2: /display                (projector — audience-facing)
-     - Tab 3: /session/DOTNETAI-CONF  (audience phone — participation)
+  2. Note the default session code from startup logs (e.g., XXXXXXXX)
+  3. Open 3 browser tabs from the web resource endpoint:
+     - Tab 1: /presenter/{SessionCode}   (your laptop — speaker controls)
+       → Enter PIN "0000" when prompted
+     - Tab 2: /display/{SessionCode}     (projector — audience-facing)
+     - Tab 3: /session/{SessionCode}     (audience phone — participation)
 
 ACT 1 — GO LIVE:
   3. Presenter: Click "🚀 Go Live"
@@ -490,7 +556,7 @@ ACT 4 — THE CLOSER:
 
 ---
 
-## 12. Full Lifecycle Verification
+## 13. Full Lifecycle Verification
 
 Verify the complete data flow through one topic:
 
@@ -513,7 +579,7 @@ Verify the complete data flow through one topic:
 
 ---
 
-## 13. Feature Matrix — What Works With/Without AI
+## 14. Feature Matrix — What Works With/Without AI
 
 | Feature | Without AI | With AI |
 |---------|:----------:|:-------:|
@@ -536,7 +602,7 @@ Verify the complete data flow through one topic:
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
@@ -551,10 +617,13 @@ Verify the complete data flow through one topic:
 | AI answer not appearing | Check structured logs in Aspire dashboard for `QuestionAnsweringService` errors |
 | Insights not generating | Verify AI is configured; check logs for `InsightGenerationService` warnings |
 | KB count not growing | Check structured logs for ingestion errors after poll close / topic complete |
+| PIN gate not appearing | Ensure you're navigating to `/presenter/{SessionCode}` (not just `/presenter`) |
+| Session code unknown | Check startup logs for "Default session created: XXXXXXXX (PIN: 0000)" |
+| Session not on home page | Refresh `/` — session list is loaded from `SessionManager` |
 
 ---
 
-## 15. Slide System
+## 16. Slide System
 
 ### Verify Slides Load
 ```
@@ -563,7 +632,7 @@ Verify the complete data flow through one topic:
 ```
 
 ### Presenter Slide Navigation
-1. Navigate to `/presenter`
+1. Navigate to `/presenter/{SessionCode}` and enter the host PIN
 2. Click **Go Live** to start the session
 3. Activate the first topic (Microsoft.Extensions.AI)
 4. ✅ The top half (slide zone) should show a **slide preview** with the topic's first slide
@@ -584,7 +653,7 @@ Verify the complete data flow through one topic:
 8. ✅ Tab badges update: question count on ❓ Q&A, active poll indicator on 📊 Polls
 
 ### Display Slide Rendering
-1. Open `/display` in a separate browser window
+1. Open `/display/{SessionCode}` in a separate browser window
 2. ✅ When no poll is active, the display shows the **current slide full-screen**
 3. ✅ Large text, dark background, readable from back of room
 4. ✅ Progress dots at the bottom show current position
@@ -609,7 +678,7 @@ Verify the complete data flow through one topic:
 3. ✅ Both presenter and display update accordingly
 
 ### Speaker Notes Privacy
-1. While slides are showing, compare `/presenter` and `/display`
+1. While slides are showing, compare `/presenter/{SessionCode}` and `/display/{SessionCode}`
 2. ✅ Speaker notes (timing cues, demo instructions) appear **only** on the presenter
 3. ✅ The display shows **only** the slide content (no notes)
 
@@ -629,15 +698,24 @@ BUILD & LAUNCH
 [ ] dotnet build — 0 errors, 0 warnings
 [ ] aspire run (or dotnet run --project src/ConferenceAssistant.AppHost)
 [ ] Aspire dashboard shows web + openai resources
+[ ] Console shows "Default session created: XXXXXXXX (PIN: 0000)"
 [ ] Console shows "Session loaded: The Microsoft AI Stack for .NET"
 [ ] Console shows "Ingested N outline chunks into knowledge base"
 
 PAGES
-[ ] Home (/) — dedicated layout (no sidebar), dynamic session title + status badge, 3 cards navigate
-[ ] Presenter (/presenter) — split view: slide zone (top) + tabbed tools (bottom), 5 topics visible
+[ ] Home (/) — session hub: lists active sessions + "Create New Session" button
+[ ] Presenter (/presenter/{code}) — PIN gate prompts for host PIN, then unlocks dashboard
+[ ] Presenter dashboard — split view: slide zone (top) + tabbed tools (bottom), 5 topics visible
 [ ] Presenter tabs — 📊 Polls | ❓ Q&A | 📋 Topic all render, slide preview stays visible across tabs
-[ ] Session (/session/DOTNETAI-CONF) — shows waiting message
-[ ] Display (/display) — shows waiting message
+[ ] Session (/session/{code}) — shows waiting message before Go Live
+[ ] Display (/display/{code}) — shows waiting message before Go Live
+
+MULTI-SESSION
+[ ] Home page lists default session
+[ ] /create — create new session with custom code + PIN
+[ ] New session appears on home page
+[ ] Presenter PIN gate works (wrong PIN rejected, correct PIN unlocks)
+[ ] Sessions are isolated (polls/questions don't cross over)
 
 CORE FLOW
 [ ] Presenter: Go Live → status changes to Live

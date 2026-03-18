@@ -1,17 +1,22 @@
-@page "/display"
+@page "/display/{SessionCode}"
 @layout ConferenceAssistant.Web.Components.Layout.DisplayLayout
 @using ConferenceAssistant.Core.Models
 @using ConferenceAssistant.Core.Services
 @implements IDisposable
-@inject ISessionService SessionService
-@inject IPollService PollService
-@inject IInsightService InsightService
+@inject ISessionManager SessionManager
 @rendermode InteractiveServer
 
 <PageTitle>Conference Pulse — Display</PageTitle>
 
 <div class="display-page">
-    @if (session is null || session.Status == SessionStatus.Setup)
+    @if (sessionContext is null)
+    {
+        <div class="display-waiting">
+            <h1>🎯 Conference Pulse</h1>
+            <p>Session not found. Check the session code.</p>
+        </div>
+    }
+    else if (session is null || session.Status == SessionStatus.Setup)
     {
         <div class="display-waiting">
             <h1>🎯 Conference Pulse</h1>
@@ -75,6 +80,9 @@
 </div>
 
 @code {
+    [Parameter] public string SessionCode { get; set; } = "";
+
+    private SessionContext? sessionContext;
     private ConferenceSession? session;
     private SessionTopic? activeTopic;
     private Poll? activePoll;
@@ -92,7 +100,10 @@
 
     protected override void OnInitialized()
     {
-        session = SessionService.CurrentSession;
+        sessionContext = SessionManager.GetSession(SessionCode);
+        if (sessionContext is null) return;
+
+        session = sessionContext.Session;
         RefreshState();
 
         onPollActivated = _ => InvokeAsync(() => { RefreshState(); StateHasChanged(); });
@@ -100,43 +111,48 @@
         onResponseReceived = _ => InvokeAsync(() => { RefreshPollResults(); StateHasChanged(); });
         onSlideChanged = _ => InvokeAsync(() => { RefreshSlideState(); StateHasChanged(); });
 
-        PollService.PollActivated += onPollActivated;
-        PollService.PollClosed += onPollClosed;
-        PollService.ResponseReceived += onResponseReceived;
-        SessionService.SlideChanged += onSlideChanged;
+        sessionContext.PollActivated += onPollActivated;
+        sessionContext.PollClosed += onPollClosed;
+        sessionContext.ResponseReceived += onResponseReceived;
+        sessionContext.SlideChanged += onSlideChanged;
     }
 
     private void RefreshState()
     {
-        session = SessionService.CurrentSession;
-        activeTopic = SessionService.GetActiveTopic();
-        activePoll = PollService.GetActivePoll();
+        if (sessionContext is null) return;
+        session = sessionContext.Session;
+        activeTopic = sessionContext.GetActiveTopic();
+        activePoll = sessionContext.GetActivePoll();
         RefreshPollResults();
         RefreshSlideState();
 
-        var insights = InsightService.GetAllInsights();
+        var insights = sessionContext.GetAllInsights();
         latestInsight = insights.Count > 0 ? insights[^1] : null;
     }
 
     private void RefreshSlideState()
     {
-        activeSlide = SessionService.ActiveSlide;
-        activeSlideIndex = SessionService.ActiveSlideIndex;
-        totalSlides = SessionService.TotalSlides;
+        if (sessionContext is null) return;
+        activeSlide = sessionContext.ActiveSlide;
+        activeSlideIndex = sessionContext.ActiveSlideIndex;
+        totalSlides = sessionContext.TotalSlides;
     }
 
     private void RefreshPollResults()
     {
         if (activePoll is not null)
-            pollResults = PollService.GetPollResults(activePoll.Id);
+            pollResults = sessionContext?.GetPollResults(activePoll.Id);
     }
 
     public void Dispose()
     {
-        PollService.PollActivated -= onPollActivated;
-        PollService.PollClosed -= onPollClosed;
-        PollService.ResponseReceived -= onResponseReceived;
-        SessionService.SlideChanged -= onSlideChanged;
+        if (sessionContext is not null)
+        {
+            sessionContext.PollActivated -= onPollActivated;
+            sessionContext.PollClosed -= onPollClosed;
+            sessionContext.ResponseReceived -= onResponseReceived;
+            sessionContext.SlideChanged -= onSlideChanged;
+        }
     }
 }
 
