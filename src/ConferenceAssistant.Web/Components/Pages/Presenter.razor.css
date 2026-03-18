@@ -136,16 +136,16 @@
     margin: 0;
 }
 
-/* Slide zone (top half, never scrolls) */
+/* Slide zone (top half, constrained) */
 .slide-zone {
-    flex: 0 0 auto;
-    max-height: 50%;
+    flex: 1 1 50%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    padding-bottom: 0.5rem;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
 }
 
 .slide-previews {
@@ -153,10 +153,12 @@
     gap: 0.75rem;
     flex: 1;
     min-height: 0;
+    overflow: hidden;
 }
 
 .slide-preview-current {
     flex: 7;
+    min-height: 0;
     border-radius: 0.5rem;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -164,9 +166,11 @@
 
 .slide-preview-next {
     flex: 3;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    overflow: hidden;
 }
 
 .slide-preview-next .up-next-label {
@@ -174,9 +178,10 @@
     text-transform: uppercase;
     opacity: 0.5;
     letter-spacing: 0.05em;
+    flex-shrink: 0;
 }
 
-.slide-preview-next > :last-child {
+.slide-preview-next ::deep .slide-renderer {
     flex: 1;
     border-radius: 0.5rem;
     overflow: hidden;
@@ -185,14 +190,15 @@
 }
 
 .speaker-notes {
-    font-size: 0.8rem;
-    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
     background: rgba(249, 199, 79, 0.08);
-    border-radius: 0.4rem;
+    border-radius: 0.3rem;
     border-left: 3px solid #f9c74f;
-    max-height: 3rem;
+    max-height: 2.5rem;
     overflow-y: auto;
-    line-height: 1.4;
+    line-height: 1.3;
+    flex-shrink: 0;
 }
 
 .slide-nav-controls {
@@ -204,7 +210,7 @@
 }
 
 .slide-progress {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     opacity: 0.6;
 }
 

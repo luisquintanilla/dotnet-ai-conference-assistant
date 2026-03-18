@@ -92,10 +92,12 @@
         justify-content: center;
         padding: 3rem 4rem;
         animation: slideIn 0.3s ease-out;
+        overflow: hidden;
+        box-sizing: border-box;
     }
 
     .slide-renderer.compact {
-        padding: 1rem 1.5rem;
+        padding: 0.75rem 1rem;
     }
 
     @@keyframes slideIn {
@@ -124,8 +126,8 @@
         margin: 0;
     }
 
-    .slide-renderer.compact .slide-title { font-size: 1.5rem; }
-    .slide-renderer.compact .slide-subtitle { font-size: 1rem; }
+    .slide-renderer.compact .slide-title { font-size: 1.2rem; margin-bottom: 0.25rem; }
+    .slide-renderer.compact .slide-subtitle { font-size: 0.8rem; }
 
     /* Section slide */
     .slide-section-layout {
@@ -139,12 +141,13 @@
         margin: 0;
     }
 
-    .slide-renderer.compact .slide-section-title { font-size: 1.25rem; }
+    .slide-renderer.compact .slide-section-title { font-size: 1rem; }
 
     /* Content slide */
     .slide-content-layout {
         width: 100%;
         max-width: 1200px;
+        overflow: hidden;
     }
 
     .slide-heading {
@@ -154,7 +157,7 @@
         color: #e94560;
     }
 
-    .slide-renderer.compact .slide-heading { font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .slide-renderer.compact .slide-heading { font-size: 0.9rem; margin-bottom: 0.3rem; }
 
     .slide-bullets {
         list-style: none;
@@ -181,24 +184,25 @@
     }
 
     .slide-renderer.compact .slide-bullets li {
-        font-size: 0.85rem;
-        padding-left: 1rem;
-        gap: 0.25rem;
+        font-size: 0.75rem;
+        padding-left: 0.8rem;
+        line-height: 1.3;
     }
 
-    .slide-renderer.compact .slide-bullets { gap: 0.25rem; }
+    .slide-renderer.compact .slide-bullets { gap: 0.15rem; }
 
     .slide-body {
         font-size: 1.75rem;
         line-height: 1.6;
     }
 
-    .slide-renderer.compact .slide-body { font-size: 0.85rem; }
+    .slide-renderer.compact .slide-body { font-size: 0.75rem; line-height: 1.3; }
 
     /* Code slide */
     .slide-code-layout {
         width: 100%;
         max-width: 1200px;
+        overflow: hidden;
     }
 
     .slide-code {
@@ -206,7 +210,7 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 1rem;
         padding: 2rem 2.5rem;
-        overflow-x: auto;
+        overflow: hidden;
         font-size: 1.5rem;
         line-height: 1.6;
         font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
@@ -217,10 +221,10 @@
     }
 
     .slide-renderer.compact .slide-code {
-        font-size: 0.7rem;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.5rem;
-        line-height: 1.4;
+        font-size: 0.65rem;
+        padding: 0.4rem 0.6rem;
+        border-radius: 0.4rem;
+        line-height: 1.3;
     }
 
     /* Centered layout override */
