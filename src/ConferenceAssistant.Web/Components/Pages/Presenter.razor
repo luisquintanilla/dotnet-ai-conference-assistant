@@ -70,12 +70,21 @@
 
             <!-- Active Topic Panel (main area) -->
             <div class="panel main-panel" tabindex="0" @onkeydown="HandleSlideKeydown">
-                @* Slide Presenter View *@
                 @if (activeSlide is not null)
                 {
-                    <div class="slide-presenter-view">
-                        <div class="slide-preview-box">
-                            <SlideRenderer Slide="@activeSlide" Compact="true" />
+                    <!-- SLIDE ZONE (top half, never scrolls) -->
+                    <div class="slide-zone">
+                        <div class="slide-previews">
+                            <div class="slide-preview-current">
+                                <SlideRenderer Slide="@activeSlide" Compact="true" />
+                            </div>
+                            @if (nextSlide is not null)
+                            {
+                                <div class="slide-preview-next">
+                                    <span class="up-next-label">Up Next</span>
+                                    <SlideRenderer Slide="@nextSlide" Compact="true" />
+                                </div>
+                            }
                         </div>
 
                         @if (!string.IsNullOrWhiteSpace(activeSlide.SpeakerNotes))
@@ -86,192 +95,195 @@
                         }
 
                         <div class="slide-nav-controls">
-                            <div class="slide-nav-buttons">
-                                <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@(SessionService.ActiveSlideIndex <= 0)">◀ Previous</button>
-                                <span class="slide-progress">Slide @(SessionService.ActiveSlideIndex + 1) of @SessionService.TotalSlides</span>
-                                <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@(SessionService.ActiveSlideIndex >= SessionService.TotalSlides - 1)">Next ▶</button>
-                            </div>
-                            @if (nextSlide is not null)
-                            {
-                                <div class="up-next-preview">
-                                    <span class="up-next-label">Up Next</span>
-                                    <div class="up-next-box">
-                                        <SlideRenderer Slide="@nextSlide" Compact="true" />
-                                    </div>
-                                </div>
-                            }
+                            <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@(SessionService.ActiveSlideIndex <= 0)">◀ Prev</button>
+                            <span class="slide-progress">Slide @(SessionService.ActiveSlideIndex + 1) / @SessionService.TotalSlides</span>
+                            <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@(SessionService.ActiveSlideIndex >= SessionService.TotalSlides - 1)">Next ▶</button>
                         </div>
                     </div>
                 }
 
+                <!-- TOOLS ZONE (bottom half, tabbed) -->
                 @if (activeTopic is not null)
                 {
-                    <div class="topic-detail">
-                        <h2>🎯 @activeTopic.Title</h2>
-                        @if (!string.IsNullOrWhiteSpace(activeTopic.Description))
-                        {
-                            <p class="topic-description">@activeTopic.Description</p>
-                        }
-                        @if (activeTopic.TalkingPoints.Count > 0)
-                        {
-                            <ul class="talking-points">
-                                @foreach (var point in activeTopic.TalkingPoints)
-                                {
-                                    <li>@point</li>
-                                }
-                            </ul>
-                        }
-                    </div>
+                    <div class="tools-zone">
+                        <div class="tab-bar">
+                            <button class="tab-btn @(activeTab == "polls" ? "active" : "")" @onclick='() => SetActiveTab("polls")'>
+                                📊 Polls @if (activePoll?.Status == PollStatus.Active) {<span class="tab-badge live">LIVE</span>}
+                            </button>
+                            <button class="tab-btn @(activeTab == "qa" ? "active" : "")" @onclick='() => SetActiveTab("qa")'>
+                                ❓ Q&amp;A @if (topicQuestions.Count > 0) {<span class="tab-badge">@topicQuestions.Count</span>}
+                            </button>
+                            <button class="tab-btn @(activeTab == "topic" ? "active" : "")" @onclick='() => SetActiveTab("topic")'>
+                                📋 Topic
+                            </button>
+                        </div>
 
-                    <!-- Poll Controls -->
-                    <div class="poll-section">
-                        <h3>📊 Polls</h3>
-                        @if (activePoll is null || activePoll.Status == PollStatus.Closed)
-                        {
-                            @if (closedPoll is not null)
+                        <div class="tab-content">
+                            @if (activeTab == "polls")
                             {
-                                <div class="closed-poll-results">
-                                    <h4>Last Poll Results: @closedPoll.Question</h4>
-                                    <PollResultsChart Poll="@closedPoll" Results="@closedPollResults" />
-                                </div>
-                            }
-
-                            <div class="poll-actions">
-                                <button class="btn btn-outline" @onclick="AutoGeneratePoll">🤖 Auto-Generate Poll</button>
-
-                                @if (activeTopic.SuggestedPolls.Count > 0)
+                                @if (activePoll is null || activePoll.Status == PollStatus.Closed)
                                 {
-                                    <div class="suggested-poll-picker">
-                                        <select @bind="selectedSuggestedPollIndex">
-                                            <option value="-1">— Use Suggested Poll —</option>
-                                            @for (var i = 0; i < activeTopic.SuggestedPolls.Count; i++)
-                                            {
-                                                <option value="@i">@activeTopic.SuggestedPolls[i].Question</option>
-                                            }
-                                        </select>
-                                        <button class="btn btn-sm btn-primary"
-                                                disabled="@(selectedSuggestedPollIndex < 0)"
-                                                @onclick="LaunchSelectedSuggestedPoll">
-                                            Launch
-                                        </button>
-                                    </div>
-                                }
-
-                                <div class="custom-poll-form">
-                                    <button class="btn btn-outline" @onclick="ToggleCustomPollForm">
-                                        ✏️ Custom Poll
-                                    </button>
-                                    @if (showCustomPollForm)
+                                    @if (closedPoll is not null)
                                     {
-                                        <div class="custom-poll-inputs">
-                                            <input type="text" @bind="customPollQuestion" placeholder="Poll question..." />
-                                            @for (var i = 0; i < customPollOptions.Count; i++)
-                                            {
-                                                var index = i;
-                                                <div class="option-row">
-                                                    <input type="text"
-                                                           value="@customPollOptions[index]"
-                                                           @onchange="(e) => UpdateCustomOption(index, e.Value?.ToString() ?? string.Empty)"
-                                                           placeholder="Option @(index + 1)..." />
-                                                    @if (customPollOptions.Count > 2)
+                                        <div class="closed-poll-results">
+                                            <h4>Last Poll Results: @closedPoll.Question</h4>
+                                            <PollResultsChart Poll="@closedPoll" Results="@closedPollResults" />
+                                        </div>
+                                    }
+
+                                    <div class="poll-actions">
+                                        <button class="btn btn-outline" @onclick="AutoGeneratePoll">🤖 Auto-Generate Poll</button>
+
+                                        @if (activeTopic.SuggestedPolls.Count > 0)
+                                        {
+                                            <div class="suggested-poll-picker">
+                                                <select @bind="selectedSuggestedPollIndex">
+                                                    <option value="-1">— Use Suggested Poll —</option>
+                                                    @for (var i = 0; i < activeTopic.SuggestedPolls.Count; i++)
                                                     {
-                                                        <button class="btn-icon" @onclick="() => RemoveCustomOption(index)">✕</button>
+                                                        <option value="@i">@activeTopic.SuggestedPolls[i].Question</option>
                                                     }
-                                                </div>
-                                            }
-                                            <div class="custom-poll-actions">
-                                                <button class="btn btn-sm" @onclick="AddCustomOption">+ Add Option</button>
+                                                </select>
                                                 <button class="btn btn-sm btn-primary"
-                                                        disabled="@(!IsCustomPollValid)"
-                                                        @onclick="LaunchCustomPoll">
-                                                    🚀 Create &amp; Go Live
+                                                        disabled="@(selectedSuggestedPollIndex < 0)"
+                                                        @onclick="LaunchSelectedSuggestedPoll">
+                                                    Launch
                                                 </button>
                                             </div>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="active-poll">
-                                <h4>@activePoll.Question</h4>
-                                <div class="poll-options-display">
-                                    @foreach (var option in activePoll.Options)
-                                    {
-                                        var count = activePollResults?.GetValueOrDefault(option, 0) ?? 0;
-                                        var total = activePollResults?.Values.Sum() ?? 0;
-                                        var pct = total > 0 ? (int)(100.0 * count / total) : 0;
-                                        <div class="poll-option-bar">
-                                            <div class="poll-option-fill" style="width: @(pct)%"></div>
-                                            <span class="poll-option-label">@option</span>
-                                            <span class="poll-option-count">@count (@(pct)%)</span>
-                                        </div>
-                                    }
-                                </div>
-                                @if (activePoll.Status == PollStatus.Draft)
-                                {
-                                    <button class="btn btn-primary" @onclick="() => ActivatePollAsync(activePoll.Id)">📡 Go Live</button>
-                                }
-                                else if (activePoll.Status == PollStatus.Active)
-                                {
-                                    <button class="btn btn-danger" @onclick="() => ClosePollAsync(activePoll.Id)">🔒 Close Poll</button>
-                                }
-                            </div>
-                        }
-                    </div>
-
-                    <!-- Audience Questions -->
-                    <div class="questions-section">
-                        <h3>❓ Audience Questions</h3>
-                        @if (topicQuestions.Count == 0)
-                        {
-                            <p class="muted">No questions yet.</p>
-                        }
-                        else
-                        {
-                            @foreach (var q in topicQuestions.OrderByDescending(q => q.Upvotes))
-                            {
-                                <div class="question-item">
-                                    <div class="question-header">
-                                        <span class="upvote-count">👍 @q.Upvotes</span>
-                                        <span class="question-text">@q.Text</span>
-                                    </div>
-                                    @if (q.Answers.Count > 0)
-                                    {
-                                        @foreach (var answer in q.Answers)
-                                        {
-                                            <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
-                                                @if (answer.IsAiGenerated)
-                                                {
-                                                    <span class="ai-badge">🤖 AI</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="human-badge">💬 @answer.AuthorLabel</span>
-                                                }
-                                                <strong>A:</strong> @answer.Text
-                                            </div>
                                         }
-                                    }
-                                    @if (answeringQuestionId == q.Id)
+
+                                        <div class="custom-poll-form">
+                                            <button class="btn btn-outline" @onclick="ToggleCustomPollForm">
+                                                ✏️ Custom Poll
+                                            </button>
+                                            @if (showCustomPollForm)
+                                            {
+                                                <div class="custom-poll-inputs">
+                                                    <input type="text" @bind="customPollQuestion" placeholder="Poll question..." />
+                                                    @for (var i = 0; i < customPollOptions.Count; i++)
+                                                    {
+                                                        var index = i;
+                                                        <div class="option-row">
+                                                            <input type="text"
+                                                                   value="@customPollOptions[index]"
+                                                                   @onchange="(e) => UpdateCustomOption(index, e.Value?.ToString() ?? string.Empty)"
+                                                                   placeholder="Option @(index + 1)..." />
+                                                            @if (customPollOptions.Count > 2)
+                                                            {
+                                                                <button class="btn-icon" @onclick="() => RemoveCustomOption(index)">✕</button>
+                                                            }
+                                                        </div>
+                                                    }
+                                                    <div class="custom-poll-actions">
+                                                        <button class="btn btn-sm" @onclick="AddCustomOption">+ Add Option</button>
+                                                        <button class="btn btn-sm btn-primary"
+                                                                disabled="@(!IsCustomPollValid)"
+                                                                @onclick="LaunchCustomPoll">
+                                                            🚀 Create &amp; Go Live
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="active-poll">
+                                        <h4>@activePoll.Question</h4>
+                                        <div class="poll-options-display">
+                                            @foreach (var option in activePoll.Options)
+                                            {
+                                                var count = activePollResults?.GetValueOrDefault(option, 0) ?? 0;
+                                                var total = activePollResults?.Values.Sum() ?? 0;
+                                                var pct = total > 0 ? (int)(100.0 * count / total) : 0;
+                                                <div class="poll-option-bar">
+                                                    <div class="poll-option-fill" style="width: @(pct)%"></div>
+                                                    <span class="poll-option-label">@option</span>
+                                                    <span class="poll-option-count">@count (@(pct)%)</span>
+                                                </div>
+                                            }
+                                        </div>
+                                        @if (activePoll.Status == PollStatus.Draft)
+                                        {
+                                            <button class="btn btn-primary" @onclick="() => ActivatePollAsync(activePoll.Id)">📡 Go Live</button>
+                                        }
+                                        else if (activePoll.Status == PollStatus.Active)
+                                        {
+                                            <button class="btn btn-danger" @onclick="() => ClosePollAsync(activePoll.Id)">🔒 Close Poll</button>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else if (activeTab == "qa")
+                            {
+                                @if (topicQuestions.Count == 0)
+                                {
+                                    <p class="muted">No questions yet.</p>
+                                }
+                                else
+                                {
+                                    @foreach (var q in topicQuestions.OrderByDescending(q => q.Upvotes))
                                     {
-                                        <div class="answer-form">
-                                            <input type="text" @bind="answerText" placeholder="Type your answer..." />
-                                            <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
-                                            <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                        <div class="question-item">
+                                            <div class="question-header">
+                                                <span class="upvote-count">👍 @q.Upvotes</span>
+                                                <span class="question-text">@q.Text</span>
+                                            </div>
+                                            @if (q.Answers.Count > 0)
+                                            {
+                                                @foreach (var answer in q.Answers)
+                                                {
+                                                    <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
+                                                        @if (answer.IsAiGenerated)
+                                                        {
+                                                            <span class="ai-badge">🤖 AI</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="human-badge">💬 @answer.AuthorLabel</span>
+                                                        }
+                                                        <strong>A:</strong> @answer.Text
+                                                    </div>
+                                                }
+                                            }
+                                            @if (answeringQuestionId == q.Id)
+                                            {
+                                                <div class="answer-form">
+                                                    <input type="text" @bind="answerText" placeholder="Type your answer..." />
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
+                                                    <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
+                                            }
                                         </div>
                                     }
-                                    else
-                                    {
-                                        <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
-                                    }
-                                </div>
+                                }
                             }
-                        }
+                            else if (activeTab == "topic")
+                            {
+                                <h2>🎯 @activeTopic.Title</h2>
+                                @if (!string.IsNullOrWhiteSpace(activeTopic.Description))
+                                {
+                                    <p class="topic-description">@activeTopic.Description</p>
+                                }
+                                @if (activeTopic.TalkingPoints.Count > 0)
+                                {
+                                    <ul class="talking-points">
+                                        @foreach (var point in activeTopic.TalkingPoints)
+                                        {
+                                            <li>@point</li>
+                                        }
+                                    </ul>
+                                }
+                            }
+                        </div>
                     </div>
                 }
-                else
+                else if (activeSlide is null)
                 {
                     <div class="no-active-topic">
                         <p>Select a topic to activate from the panel on the left.</p>
@@ -336,6 +348,9 @@
 
     // Insight generation
     private bool isGeneratingInsights;
+
+    // Tab state for tools zone
+    private string activeTab = "polls";
 
     // Slide navigation
     private Slide? activeSlide;
@@ -619,6 +634,8 @@
 
     // Slide navigation
 
+    private void SetActiveTab(string tab) { activeTab = tab; }
+
     private async Task AdvanceSlideAsync()
     {
         await SessionService.AdvanceSlideAsync();
@@ -645,75 +662,6 @@
 }
 
 <style>
-    .slide-presenter-view {
-        margin-bottom: 1.5rem;
-    }
-
-    .slide-preview-box {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 0.75rem;
-        min-height: 200px;
-        padding: 1rem;
-        overflow: hidden;
-    }
-
-    .speaker-notes {
-        background: rgba(233, 69, 96, 0.05);
-        border-left: 3px solid #e94560;
-        padding: 1rem;
-        font-style: italic;
-        opacity: 0.9;
-        border-radius: 0 0.5rem 0.5rem 0;
-        margin-top: 0.75rem;
-    }
-
-    .slide-nav-controls {
-        margin-top: 0.75rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .slide-nav-buttons {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 1rem;
-    }
-
-    .slide-progress {
-        opacity: 0.6;
-        text-align: center;
-        font-size: 0.85rem;
-    }
-
-    .up-next-preview {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.25rem;
-    }
-
-    .up-next-label {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        opacity: 0.5;
-    }
-
-    .up-next-box {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 0.5rem;
-        height: 150px;
-        width: 100%;
-        max-width: 300px;
-        overflow: hidden;
-        opacity: 0.6;
-        padding: 0.5rem;
-    }
-
     .question-answer.ai-answer {
         background: rgba(100, 100, 255, 0.1);
         border-left: 3px solid rgba(100, 100, 255, 0.5);

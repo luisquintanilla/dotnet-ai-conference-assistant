@@ -138,19 +138,29 @@ All non-AI features (manual polls, voting, questions, topic management) work fin
 
 ## 3. Home Page — `/`
 
+The homepage uses its own dedicated layout (no sidebar navigation).
+
 | # | Check | Expected |
 |---|-------|----------|
-| 1 | Page loads | Hero: "🎯 Conference Pulse" + "AI-Powered Conference Assistant" |
-| 2 | Three cards visible | Presenter Dashboard, Join Session, Projection Display |
-| 3 | Click "Presenter Dashboard" | Navigates to `/presenter` |
-| 4 | Click "Join Session" | Navigates to `/session/DOTNETAI-CONF` |
-| 5 | Click "Projection Display" | Navigates to `/display` |
+| 1 | Page loads | Conference Pulse landing page appears **without** the template sidebar |
+| 2 | Session title displayed | Dynamic session title from the service (e.g., "The Microsoft AI Stack for .NET") |
+| 3 | Session status badge | Status badge is visible (e.g., "Setup" or "Live") |
+| 4 | Three navigation cards | Presenter Dashboard, Join Session, Projection Display |
+| 5 | Click "Presenter Dashboard" | Navigates to `/presenter` |
+| 6 | Click "Join Session" | Navigates to `/session/DOTNETAI-CONF` |
+| 7 | Click "Projection Display" | Navigates to `/display` |
 
 ---
 
 ## 4. Presenter Dashboard — `/presenter`
 
 Open this in your "speaker laptop" browser window.
+
+The presenter uses a **split view** layout:
+- **Top half** — Slide zone: slide preview + speaker notes (always visible)
+- **Bottom half** — Tabbed tools zone with three tabs: 📊 **Polls** | ❓ **Q&A** | 📋 **Topic**
+
+Tab badges show the question count and an active poll indicator.
 
 ### 4a. Session Setup State
 
@@ -162,6 +172,7 @@ Open this in your "speaker laptop" browser window.
 | 4 | 5 topics in left panel | meai, knowledge, agents, mcp, closer |
 | 5 | "🚀 Go Live" button visible | Yes |
 | 6 | Topic activate buttons | Should NOT appear (session not live yet) |
+| 7 | Tabbed tools zone | Three tabs visible: 📊 Polls, ❓ Q&A, 📋 Topic |
 
 ### 4b. Go Live
 
@@ -555,12 +566,22 @@ Verify the complete data flow through one topic:
 1. Navigate to `/presenter`
 2. Click **Go Live** to start the session
 3. Activate the first topic (Microsoft.Extensions.AI)
-4. ✅ The main panel should show a **slide preview** with the topic's first slide
+4. ✅ The top half (slide zone) should show a **slide preview** with the topic's first slide
 5. ✅ **Speaker notes** should appear below the preview (with 🎤 icon)
 6. Click **Next ▶** — slide advances, preview and notes update
 7. Click **◀ Previous** — slide goes back
 8. ✅ Progress shows "Slide X of Y"
 9. ✅ "Up Next" preview shows the next slide
+
+### Tabbed Tools Verification
+1. After verifying slides work, click the **📊 Polls** tab
+2. ✅ Poll controls are accessible (suggested polls dropdown, launch button, etc.)
+3. Click the **❓ Q&A** tab
+4. ✅ Questions area is visible (audience questions list, AI answers)
+5. Click the **📋 Topic** tab
+6. ✅ Topic details are displayed (description, talking points)
+7. ✅ Slide preview in the top half stays visible regardless of which tab is active
+8. ✅ Tab badges update: question count on ❓ Q&A, active poll indicator on 📊 Polls
 
 ### Display Slide Rendering
 1. Open `/display` in a separate browser window
@@ -612,8 +633,9 @@ BUILD & LAUNCH
 [ ] Console shows "Ingested N outline chunks into knowledge base"
 
 PAGES
-[ ] Home (/) — 3 cards render and navigate
-[ ] Presenter (/presenter) — dashboard loads, 5 topics visible
+[ ] Home (/) — dedicated layout (no sidebar), dynamic session title + status badge, 3 cards navigate
+[ ] Presenter (/presenter) — split view: slide zone (top) + tabbed tools (bottom), 5 topics visible
+[ ] Presenter tabs — 📊 Polls | ❓ Q&A | 📋 Topic all render, slide preview stays visible across tabs
 [ ] Session (/session/DOTNETAI-CONF) — shows waiting message
 [ ] Display (/display) — shows waiting message
 
