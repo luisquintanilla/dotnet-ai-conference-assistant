@@ -70,57 +70,69 @@
 
             <!-- Active Topic Panel (main area) -->
             <div class="panel main-panel" tabindex="0" @onkeydown="HandleSlideKeydown">
-                @if (activeSlide is not null)
-                {
-                    <!-- SLIDE ZONE (top half, never scrolls) -->
-                    <div class="slide-zone">
-                        <div class="slide-previews">
-                            <div class="slide-preview-current">
-                                <SlideRenderer Slide="@activeSlide" Compact="true" />
-                            </div>
-                            @if (nextSlide is not null)
-                            {
-                                <div class="slide-preview-next">
-                                    <span class="up-next-label">Up Next</span>
-                                    <SlideRenderer Slide="@nextSlide" Compact="true" />
-                                </div>
-                            }
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(activeSlide.SpeakerNotes))
+                <div class="tab-bar">
+                    <button class="tab-btn @(activeTab == "slides" ? "active" : "")" @onclick='() => SetActiveTab("slides")'>
+                        🎬 Slides
+                        @if (activeSlide is not null)
                         {
-                            <div class="speaker-notes">
-                                <span>🎤</span> @activeSlide.SpeakerNotes
+                            <span class="tab-badge">@(SessionService.ActiveSlideIndex + 1)/@SessionService.TotalSlides</span>
+                        }
+                    </button>
+                    <button class="tab-btn @(activeTab == "polls" ? "active" : "")" @onclick='() => SetActiveTab("polls")'>
+                        📊 Polls @if (activePoll?.Status == PollStatus.Active) {<span class="tab-badge live">LIVE</span>}
+                    </button>
+                    <button class="tab-btn @(activeTab == "qa" ? "active" : "")" @onclick='() => SetActiveTab("qa")'>
+                        ❓ Q&amp;A @if (topicQuestions.Count > 0) {<span class="tab-badge">@topicQuestions.Count</span>}
+                    </button>
+                    <button class="tab-btn @(activeTab == "topic" ? "active" : "")" @onclick='() => SetActiveTab("topic")'>
+                        📋 Topic
+                    </button>
+                </div>
+
+                <div class="tab-content">
+                    @if (activeTab == "slides")
+                    {
+                        @if (activeSlide is not null)
+                        {
+                            <div class="slides-tab">
+                                <div class="slide-previews">
+                                    <div class="slide-preview-current">
+                                        <SlideRenderer Slide="@activeSlide" Compact="true" />
+                                    </div>
+                                    @if (nextSlide is not null)
+                                    {
+                                        <div class="slide-preview-next">
+                                            <span class="up-next-label">Up Next</span>
+                                            <SlideRenderer Slide="@nextSlide" Compact="true" />
+                                        </div>
+                                    }
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(activeSlide.SpeakerNotes))
+                                {
+                                    <div class="speaker-notes">
+                                        <span>🎤</span> @activeSlide.SpeakerNotes
+                                    </div>
+                                }
+
+                                <div class="slide-nav-controls">
+                                    <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@(SessionService.ActiveSlideIndex <= 0)">◀ Prev</button>
+                                    <span class="slide-progress">Slide @(SessionService.ActiveSlideIndex + 1) / @SessionService.TotalSlides</span>
+                                    <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@(SessionService.ActiveSlideIndex >= SessionService.TotalSlides - 1)">Next ▶</button>
+                                </div>
                             </div>
                         }
-
-                        <div class="slide-nav-controls">
-                            <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@(SessionService.ActiveSlideIndex <= 0)">◀ Prev</button>
-                            <span class="slide-progress">Slide @(SessionService.ActiveSlideIndex + 1) / @SessionService.TotalSlides</span>
-                            <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@(SessionService.ActiveSlideIndex >= SessionService.TotalSlides - 1)">Next ▶</button>
-                        </div>
-                    </div>
-                }
-
-                <!-- TOOLS ZONE (bottom half, tabbed) -->
-                @if (activeTopic is not null)
-                {
-                    <div class="tools-zone">
-                        <div class="tab-bar">
-                            <button class="tab-btn @(activeTab == "polls" ? "active" : "")" @onclick='() => SetActiveTab("polls")'>
-                                📊 Polls @if (activePoll?.Status == PollStatus.Active) {<span class="tab-badge live">LIVE</span>}
-                            </button>
-                            <button class="tab-btn @(activeTab == "qa" ? "active" : "")" @onclick='() => SetActiveTab("qa")'>
-                                ❓ Q&amp;A @if (topicQuestions.Count > 0) {<span class="tab-badge">@topicQuestions.Count</span>}
-                            </button>
-                            <button class="tab-btn @(activeTab == "topic" ? "active" : "")" @onclick='() => SetActiveTab("topic")'>
-                                📋 Topic
-                            </button>
-                        </div>
-
-                        <div class="tab-content">
-                            @if (activeTab == "polls")
-                            {
+                        else
+                        {
+                            <div class="no-active-topic">
+                                <p>Activate a topic from the left panel to start presenting.</p>
+                            </div>
+                        }
+                    }
+                    else if (activeTab == "polls")
+                    {
+                        @if (activeTopic is not null)
+                        {
                                 @if (activePoll is null || activePoll.Status == PollStatus.Closed)
                                 {
                                     @if (closedPoll is not null)
@@ -214,81 +226,92 @@
                                         }
                                     </div>
                                 }
-                            }
-                            else if (activeTab == "qa")
+                        }
+                        else
+                        {
+                            <p class="muted">Activate a topic to manage polls.</p>
+                        }
+                    }
+                    else if (activeTab == "qa")
+                    {
+                        @if (activeTopic is not null)
+                        {
+                            @if (topicQuestions.Count == 0)
                             {
-                                @if (topicQuestions.Count == 0)
+                                <p class="muted">No questions yet.</p>
+                            }
+                            else
+                            {
+                                @foreach (var q in topicQuestions.OrderByDescending(q => q.Upvotes))
                                 {
-                                    <p class="muted">No questions yet.</p>
-                                }
-                                else
-                                {
-                                    @foreach (var q in topicQuestions.OrderByDescending(q => q.Upvotes))
-                                    {
-                                        <div class="question-item">
-                                            <div class="question-header">
-                                                <span class="upvote-count">👍 @q.Upvotes</span>
-                                                <span class="question-text">@q.Text</span>
-                                            </div>
-                                            @if (q.Answers.Count > 0)
+                                    <div class="question-item">
+                                        <div class="question-header">
+                                            <span class="upvote-count">👍 @q.Upvotes</span>
+                                            <span class="question-text">@q.Text</span>
+                                        </div>
+                                        @if (q.Answers.Count > 0)
+                                        {
+                                            @foreach (var answer in q.Answers)
                                             {
-                                                @foreach (var answer in q.Answers)
-                                                {
-                                                    <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
-                                                        @if (answer.IsAiGenerated)
-                                                        {
-                                                            <span class="ai-badge">🤖 AI</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="human-badge">💬 @answer.AuthorLabel</span>
-                                                        }
-                                                        <strong>A:</strong> @answer.Text
-                                                    </div>
-                                                }
-                                            }
-                                            @if (answeringQuestionId == q.Id)
-                                            {
-                                                <div class="answer-form">
-                                                    <input type="text" @bind="answerText" placeholder="Type your answer..." />
-                                                    <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
-                                                    <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                                <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
+                                                    @if (answer.IsAiGenerated)
+                                                    {
+                                                        <span class="ai-badge">🤖 AI</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="human-badge">💬 @answer.AuthorLabel</span>
+                                                    }
+                                                    <strong>A:</strong> @answer.Text
                                                 </div>
                                             }
-                                            else
-                                            {
-                                                <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
-                                            }
-                                        </div>
-                                    }
-                                }
-                            }
-                            else if (activeTab == "topic")
-                            {
-                                <h2>🎯 @activeTopic.Title</h2>
-                                @if (!string.IsNullOrWhiteSpace(activeTopic.Description))
-                                {
-                                    <p class="topic-description">@activeTopic.Description</p>
-                                }
-                                @if (activeTopic.TalkingPoints.Count > 0)
-                                {
-                                    <ul class="talking-points">
-                                        @foreach (var point in activeTopic.TalkingPoints)
-                                        {
-                                            <li>@point</li>
                                         }
-                                    </ul>
+                                        @if (answeringQuestionId == q.Id)
+                                        {
+                                            <div class="answer-form">
+                                                <input type="text" @bind="answerText" placeholder="Type your answer..." />
+                                                <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
+                                                <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
+                                        }
+                                    </div>
                                 }
                             }
-                        </div>
-                    </div>
-                }
-                else if (activeSlide is null)
-                {
-                    <div class="no-active-topic">
-                        <p>Select a topic to activate from the panel on the left.</p>
-                    </div>
-                }
+                        }
+                        else
+                        {
+                            <p class="muted">Activate a topic to see audience questions.</p>
+                        }
+                    }
+                    else if (activeTab == "topic")
+                    {
+                        @if (activeTopic is not null)
+                        {
+                            <h2>🎯 @activeTopic.Title</h2>
+                            @if (!string.IsNullOrWhiteSpace(activeTopic.Description))
+                            {
+                                <p class="topic-description">@activeTopic.Description</p>
+                            }
+                            @if (activeTopic.TalkingPoints.Count > 0)
+                            {
+                                <ul class="talking-points">
+                                    @foreach (var point in activeTopic.TalkingPoints)
+                                    {
+                                        <li>@point</li>
+                                    }
+                                </ul>
+                            }
+                        }
+                        else
+                        {
+                            <p class="muted">Activate a topic to see details.</p>
+                        }
+                    }
+                </div>
             </div>
 
             <!-- Insights Panel (right side) -->
@@ -350,7 +373,7 @@
     private bool isGeneratingInsights;
 
     // Tab state for tools zone
-    private string activeTab = "polls";
+    private string activeTab = "slides";
 
     // Slide navigation
     private Slide? activeSlide;
