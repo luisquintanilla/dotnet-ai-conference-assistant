@@ -143,7 +143,7 @@ sessionManager.SessionCreated += ctx =>
                 var results = ctx.GetPollResults(poll.Id);
                 if (results.Count > 0)
                 {
-                    await ingestionService.IngestResponseAsync(poll.Id, poll.TopicId, poll.Question, results);
+                    await ingestionService.IngestResponseAsync(poll.Id, poll.TopicId ?? "", poll.Question, results);
                     app.Logger.LogInformation("Ingested poll results for {PollId} into knowledge base", poll.Id);
                 }
                 await insightGen.GeneratePollInsightsAsync(poll.Id);

@@ -110,7 +110,7 @@
                         📊 Polls @if (activePoll?.Status == PollStatus.Active) {<span class="tab-badge live">LIVE</span>}
                     </button>
                     <button class="tab-btn @(activeTab == "qa" ? "active" : "")" @onclick='() => SetActiveTab("qa")'>
-                        ❓ Q&amp;A @if (topicQuestions.Count > 0) {<span class="tab-badge">@topicQuestions.Count</span>}
+                        ❓ Q&amp;A @if (allQuestions.Count > 0) {<span class="tab-badge">@allQuestions.Count</span>}
                     </button>
                     <button class="tab-btn @(activeTab == "topic" ? "active" : "")" @onclick='() => SetActiveTab("topic")'>
                         📋 Topic
@@ -162,8 +162,6 @@
                     }
                     else if (activeTab == "polls")
                     {
-                        @if (activeTopic is not null)
-                        {
                                 @if (activePoll is null || activePoll.Status == PollStatus.Closed)
                                 {
                                     @if (closedPoll is not null)
@@ -175,9 +173,12 @@
                                     }
 
                                     <div class="poll-actions">
-                                        <button class="btn btn-outline" @onclick="AutoGeneratePoll">🤖 Auto-Generate Poll</button>
+                                        @if (activeTopic is not null)
+                                        {
+                                            <button class="btn btn-outline" @onclick="AutoGeneratePoll">🤖 Auto-Generate Poll</button>
+                                        }
 
-                                        @if (activeTopic.SuggestedPolls.Count > 0)
+                                        @if (activeTopic?.SuggestedPolls.Count > 0)
                                         {
                                             <div class="suggested-poll-picker">
                                                 <select @bind="selectedSuggestedPollIndex">
@@ -257,65 +258,61 @@
                                         }
                                     </div>
                                 }
-                        }
-                        else
-                        {
-                            <p class="muted">Activate a topic to manage polls.</p>
-                        }
                     }
                     else if (activeTab == "qa")
                     {
-                        @if (activeTopic is not null)
+                        @if (allQuestions.Count == 0)
                         {
-                            @if (topicQuestions.Count == 0)
-                            {
-                                <p class="muted">No questions yet.</p>
-                            }
-                            else
-                            {
-                                @foreach (var q in topicQuestions.OrderByDescending(q => q.Upvotes))
-                                {
-                                    <div class="question-item">
-                                        <div class="question-header">
-                                            <span class="upvote-count">👍 @q.Upvotes</span>
-                                            <span class="question-text">@q.Text</span>
-                                        </div>
-                                        @if (q.Answers.Count > 0)
-                                        {
-                                            @foreach (var answer in q.Answers)
-                                            {
-                                                <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
-                                                    @if (answer.IsAiGenerated)
-                                                    {
-                                                        <span class="ai-badge">🤖 AI</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="human-badge">💬 @answer.AuthorLabel</span>
-                                                    }
-                                                    <strong>A:</strong> @answer.Text
-                                                </div>
-                                            }
-                                        }
-                                        @if (answeringQuestionId == q.Id)
-                                        {
-                                            <div class="answer-form">
-                                                <input type="text" @bind="answerText" placeholder="Type your answer..." />
-                                                <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
-                                                <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
-                                        }
-                                    </div>
-                                }
-                            }
+                            <p class="muted">No questions yet. Attendees can ask questions from their devices.</p>
                         }
                         else
                         {
-                            <p class="muted">Activate a topic to see audience questions.</p>
+                            @foreach (var q in allQuestions)
+                            {
+                                <div class="question-item">
+                                    <div class="question-header">
+                                        <span class="upvote-count">👍 @q.Upvotes</span>
+                                        <span class="question-text">@q.Text</span>
+                                        @if (!string.IsNullOrEmpty(q.TopicId))
+                                        {
+                                            var topic = session?.Topics.FirstOrDefault(t => t.Id == q.TopicId);
+                                            @if (topic is not null)
+                                            {
+                                                <span class="question-topic-badge">@topic.Title</span>
+                                            }
+                                        }
+                                    </div>
+                                    @if (q.Answers.Count > 0)
+                                    {
+                                        @foreach (var answer in q.Answers)
+                                        {
+                                            <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
+                                                @if (answer.IsAiGenerated)
+                                                {
+                                                    <span class="ai-badge">🤖 AI</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="human-badge">💬 @answer.AuthorLabel</span>
+                                                }
+                                                <strong>A:</strong> @answer.Text
+                                            </div>
+                                        }
+                                    }
+                                    @if (answeringQuestionId == q.Id)
+                                    {
+                                        <div class="answer-form">
+                                            <input type="text" @bind="answerText" placeholder="Type your answer..." />
+                                            <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
+                                            <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
+                                    }
+                                </div>
+                            }
                         }
                     }
                     else if (activeTab == "topic")
@@ -480,6 +477,7 @@
     private Dictionary<string, int>? closedPollResults;
     private IReadOnlyList<Insight> topicInsights = [];
     private IReadOnlyList<AudienceQuestion> topicQuestions = [];
+    private IReadOnlyList<AudienceQuestion> allQuestions = [];
     private int knowledgeBaseCount;
 
     // Suggested poll selection
@@ -625,6 +623,8 @@
             closedPollResults = sessionContext.GetPollResults(previousPoll.Id);
         }
 
+        allQuestions = sessionContext.GetTopQuestions(50);
+
         if (activeTopic is not null)
         {
             topicInsights = sessionContext.GetInsightsForTopic(activeTopic.Id);
@@ -656,8 +656,11 @@
 
     private void RefreshQuestions()
     {
+        allQuestions = sessionContext?.GetTopQuestions(50) ?? [];
         if (activeTopic is not null)
             topicQuestions = sessionContext?.GetQuestionsForTopic(activeTopic.Id) ?? [];
+        else
+            topicQuestions = [];
     }
 
     private void RefreshInsights()
@@ -702,8 +705,8 @@
 
     private async Task AutoGeneratePoll()
     {
-        if (activeTopic is null || sessionContext is null) return;
-        // Placeholder: use first suggested poll if available, otherwise no-op
+        if (sessionContext is null) return;
+        if (activeTopic is null) return; // Auto-generate requires a topic for suggested polls
         var suggested = activeTopic.SuggestedPolls.FirstOrDefault();
         if (suggested is null) return;
         var poll = sessionContext.CreatePoll(activeTopic.Id, suggested.Question, suggested.Options, PollSource.Generated);
@@ -751,9 +754,9 @@
 
     private void LaunchCustomPoll()
     {
-        if (activeTopic is null || !IsCustomPollValid || sessionContext is null) return;
+        if (!IsCustomPollValid || sessionContext is null) return;
         var options = customPollOptions.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList();
-        var poll = sessionContext.CreatePoll(activeTopic.Id, customPollQuestion.Trim(), options, PollSource.Custom);
+        var poll = sessionContext.CreatePoll(activeTopic?.Id, customPollQuestion.Trim(), options, PollSource.Custom);
         sessionContext.ActivatePoll(poll.Id);
         showCustomPollForm = false;
         RefreshState();
@@ -797,8 +800,7 @@
         answeringQuestionId = null;
         answerText = "";
 
-        if (activeTopic is not null)
-            topicQuestions = sessionContext?.GetQuestionsForTopic(activeTopic.Id) ?? [];
+        RefreshQuestions();
     }
 
     private async Task GenerateInsightsManually()
@@ -987,6 +989,18 @@
         padding: 0.5rem;
         border-radius: 0.25rem;
         margin-top: 0.25rem;
+    }
+
+    .question-topic-badge {
+        display: inline-block;
+        font-size: 0.65rem;
+        padding: 0.1rem 0.4rem;
+        background: rgba(233, 69, 96, 0.15);
+        border: 1px solid rgba(233, 69, 96, 0.25);
+        border-radius: 0.75rem;
+        color: rgba(255, 255, 255, 0.6);
+        margin-left: 0.5rem;
+        white-space: nowrap;
     }
 
     .ai-badge {

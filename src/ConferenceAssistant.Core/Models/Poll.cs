@@ -3,7 +3,7 @@ namespace ConferenceAssistant.Core.Models;
 public class Poll
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string TopicId { get; set; } = "";
+    public string? TopicId { get; set; }
     public string Question { get; set; } = "";
     public List<string> Options { get; set; } = [];
     public PollStatus Status { get; set; } = PollStatus.Draft;

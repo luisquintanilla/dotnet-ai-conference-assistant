@@ -8,7 +8,7 @@ public interface IPollService
     event Action<Poll>? PollClosed;
     event Action<PollResponse>? ResponseReceived;
 
-    Task<Poll> CreatePollAsync(string topicId, string question, List<string> options, PollSource source = PollSource.Generated);
+    Task<Poll> CreatePollAsync(string? topicId, string question, List<string> options, PollSource source = PollSource.Generated);
     Task ActivatePollAsync(string pollId);
     Task ClosePollAsync(string pollId);
     Task<PollResponse> SubmitResponseAsync(string pollId, string selectedOption, string? attendeeId = null);

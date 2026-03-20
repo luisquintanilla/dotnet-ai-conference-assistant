@@ -38,7 +38,7 @@ public class PollService : IPollService
         }
     }
 
-    public Task<Poll> CreatePollAsync(string topicId, string question, List<string> options, PollSource source = PollSource.Generated)
+    public Task<Poll> CreatePollAsync(string? topicId, string question, List<string> options, PollSource source = PollSource.Generated)
     {
         var poll = GetDefaultContext().CreatePoll(topicId, question, options, source);
         return Task.FromResult(poll);

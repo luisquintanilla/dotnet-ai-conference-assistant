@@ -9,6 +9,7 @@
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="Aspire.Azure.AI.OpenAI" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="QRCoder" />
   </ItemGroup>
 
   <ItemGroup>

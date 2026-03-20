@@ -52,7 +52,7 @@ public class AgentTools(
     }
 
     [Description("Create a new poll for the audience to vote on")]
-    public async Task<string> CreatePoll(string topicId, string question, string[] options)
+    public async Task<string> CreatePoll(string? topicId, string question, string[] options)
     {
         var poll = await pollService.CreatePollAsync(topicId, question, options.ToList(), PollSource.Generated);
         return $"Poll created with ID: {poll.Id}";

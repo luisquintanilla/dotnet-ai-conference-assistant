@@ -4,6 +4,7 @@
 @using ConferenceAssistant.Core.Services
 @implements IDisposable
 @inject ISessionManager SessionManager
+@inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
 <PageTitle>Conference Pulse — Display</PageTitle>
@@ -65,15 +66,28 @@
                 }
                 else
                 {
-                    <div class="display-idle">
-                        <CascadeVisualization Events="@cascadeEvents" />
+                    <div class="display-join">
+                        <div class="join-qr">
+                            <img src="@qrDataUriLarge" alt="Scan to join" class="qr-image" />
+                        </div>
+                        <div class="join-info">
+                            <h2>📱 Scan to Join</h2>
+                            <p class="join-code">Session Code: <strong>@SessionCode</strong></p>
+                            <p class="join-url">@sessionUrl</p>
+                        </div>
                     </div>
                 }
             </div>
 
-            <!-- Right: Cascade + Insights -->
+            <!-- Right: Sidebar -->
             <div class="display-sidebar">
-                <CascadeVisualization Events="@cascadeEvents" />
+                @if (activePoll is not null || activeSlide is not null || latestInsight is not null)
+                {
+                    <div class="sidebar-join">
+                        <img src="@qrDataUriSmall" alt="Scan to join" class="sidebar-qr-image" />
+                        <p class="sidebar-join-code">Join: <strong>@SessionCode</strong></p>
+                    </div>
+                }
             </div>
         </div>
     }
@@ -88,10 +102,13 @@
     private Poll? activePoll;
     private Dictionary<string, int>? pollResults;
     private Insight? latestInsight;
-    private IReadOnlyList<CascadeEvent> cascadeEvents = [];
     private Slide? activeSlide;
     private int activeSlideIndex;
     private int totalSlides;
+
+    private string sessionUrl => $"{NavigationManager.BaseUri.TrimEnd('/')}/session/{SessionCode}";
+    private string qrDataUriLarge => ConferenceAssistant.Web.Services.QrCodeGenerator.GenerateDataUri(sessionUrl, 8);
+    private string qrDataUriSmall => ConferenceAssistant.Web.Services.QrCodeGenerator.GenerateDataUri(sessionUrl, 4);
 
     private Action<Poll>? onPollActivated;
     private Action<Poll>? onPollClosed;
@@ -224,6 +241,79 @@
     .display-idle {
         text-align: center;
         opacity: 0.3;
+    }
+
+    .display-join {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        height: 100%;
+        text-align: center;
+    }
+
+    .join-qr {
+        padding: 1.5rem;
+        background: white;
+        border-radius: 1.5rem;
+        box-shadow: 0 0 60px rgba(233, 69, 96, 0.3);
+    }
+
+    .qr-image {
+        width: 280px;
+        height: 280px;
+        image-rendering: pixelated;
+    }
+
+    .join-info h2 {
+        font-size: 2.5rem;
+        margin: 0 0 0.5rem;
+        color: white;
+    }
+
+    .join-code {
+        font-size: 1.8rem;
+        color: rgba(255, 255, 255, 0.8);
+        margin: 0.5rem 0;
+    }
+
+    .join-code strong {
+        color: #e94560;
+        letter-spacing: 0.1em;
+    }
+
+    .join-url {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.4);
+        font-family: 'Cascadia Code', monospace;
+    }
+
+    .sidebar-join {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.5rem;
+    }
+
+    .sidebar-qr-image {
+        width: 140px;
+        height: 140px;
+        image-rendering: pixelated;
+        background: white;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+    }
+
+    .sidebar-join-code {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.6);
+        margin: 0;
+    }
+
+    .sidebar-join-code strong {
+        color: #e94560;
     }
 
     .display-sidebar {

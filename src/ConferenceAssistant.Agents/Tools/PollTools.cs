@@ -13,9 +13,9 @@ public static class PollTools
         return
         [
             AIFunctionFactory.Create(
-                [Description("Create a new poll for the audience on a specific topic")]
+                [Description("Create a new poll for the audience, optionally associated with a topic")]
                 async (
-                    [Description("The topic ID to associate the poll with")] string topicId,
+                    [Description("The topic ID to associate the poll with (optional)")] string? topicId,
                     [Description("The poll question to ask the audience")] string question,
                     [Description("The answer options for the poll")] string[] options
                 ) =>

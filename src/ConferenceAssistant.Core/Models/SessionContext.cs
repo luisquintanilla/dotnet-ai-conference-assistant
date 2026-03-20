@@ -158,7 +158,7 @@ public class SessionContext
         => AllSlides.Where(s => s.TopicId == topicId).ToList();
 
     // --- Poll Management ---
-    public Poll CreatePoll(string topicId, string question, List<string> options, PollSource source = PollSource.Generated)
+    public Poll CreatePoll(string? topicId, string question, List<string> options, PollSource source = PollSource.Generated)
     {
         var poll = new Poll
         {
