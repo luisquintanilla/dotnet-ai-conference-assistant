@@ -700,6 +700,10 @@ Verify the complete data flow through one topic:
 10. Optionally remove topics using ✕ button
 11. Click **"🚀 Create Session"**
 12. ✅ Verify: Redirected to presenter page with imported topics
+13. ✅ Verify: Slides tab in Presenter shows generated slides
+14. ✅ Verify: Display page (`/display/{code}`) shows slides when navigating
+15. ✅ Verify: Slide types include Title, Section, Content, and Poll slides
+16. ✅ Verify: Speaker notes appear for each slide in the Presenter view
 
 ### Importing Content During a Session
 
@@ -717,6 +721,19 @@ Verify the complete data flow through one topic:
 - **Invalid URL**: Should show error message
 - **Rate limit**: GitHub API allows 60 requests/hour unauthenticated
 - **AI unavailable**: Fallback generates topics grouped by category from front matter
+
+### Slide Generation
+
+1. Import a GitHub repo via the Create Session page
+2. After AI drafting completes, create the session
+3. Open the Presenter dashboard → Slides tab
+4. ✅ Verify: Title slide shows session name
+5. ✅ Verify: Section slides for each topic
+6. ✅ Verify: Content slides with talking points as bullets
+7. ✅ Verify: Poll slides for topics with suggested polls
+8. ✅ Verify: Closing "Thank You" slide
+9. Navigate through slides using Next/Prev buttons
+10. ✅ Verify: Display page updates in sync with slide navigation
 
 ---
 

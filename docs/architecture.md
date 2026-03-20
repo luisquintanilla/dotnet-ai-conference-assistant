@@ -548,6 +548,29 @@ GitHub Repo URL
 - **Session drafting**: AI reads front matter + content → generates topics with talking points and polls
 - **Dual benefit**: One import action enriches both the knowledge base AND the session structure
 
+### Slide Generation
+
+The system auto-generates slide decks for imported sessions using a two-phase approach:
+
+**Phase 1 — Programmatic Generation** (always runs):
+- Deterministically creates slides from `SessionDraft` structure
+- Title slide → Section slides per topic → Content slides from talking points → Poll slides → Closing slide
+- Follows the same markdown format as `data/slides.md` (`---` separators, `<!-- topic/layout/speaker -->` comments)
+- Parsed by `SlideMarkdownParser` into `List<Slide>` objects
+
+**Phase 2 — AI Enhancement** (attempted first, falls back to Phase 1):
+- Sends programmatic baseline + imported document content to AI
+- AI enriches speaker notes, adds code example slides, improves transitions
+- Validated by re-parsing — falls back to Phase 1 if AI output is malformed
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `SlideGenerationService` | Web/Services/ | Generates slide markdown from SessionDraft |
+| `SlideMarkdownParser` | Core/Services/ | Parses slide markdown into Slide objects |
+| `SlideRenderer` | Web/Components/Shared/ | Renders slides (Title, Content, Code, Section, Poll, Blank) |
+
+**Topic ID Remapping**: Generated slides use placeholder IDs (`topic-0`, `topic-1`). After session creation, IDs are remapped to match actual topic GUIDs for proper slide-topic linking.
+
 ---
 
 ## Configuration (appsettings.json)
