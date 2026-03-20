@@ -222,9 +222,14 @@
                 else
                 {
                     <div class="no-active-slide">
+                        <span class="empty-icon">🎬</span>
                         <p>Activate a topic or advance to a slide to start presenting.</p>
                     </div>
                 }
+
+                <div class="keyboard-hints">
+                    <span>← → Navigate</span> <span>P Poll</span> <span>Esc Close</span>
+                </div>
 
                 <!-- Quick Poll Launch -->
                 @if (activePoll is null || activePoll.Status == PollStatus.Closed)
@@ -292,7 +297,10 @@
                     <h3>❓ Q&amp;A <span class="qa-count">(@allQuestions.Count)</span></h3>
                     @if (allQuestions.Count == 0)
                     {
-                        <p class="muted">No questions yet. Attendees can ask questions from their devices.</p>
+                        <div class="empty-state">
+                            <span class="empty-icon">💬</span>
+                            <p class="muted">No questions yet. Attendees can ask questions from their devices.</p>
+                        </div>
                     }
                     else
                     {
@@ -347,7 +355,7 @@
 
                 @if (activePoll is not null && activePoll.Status != PollStatus.Closed)
                 {
-                    <div class="right-poll-section">
+                    <div class="right-poll-section @(activePoll.Status == PollStatus.Active ? "poll-active-glow" : "")">
                         <h3>📊 Live Poll</h3>
                         <h4>@activePoll.Question</h4>
                         <div class="poll-options-display">
@@ -399,7 +407,10 @@
                     }
                     @if (topicInsights.Count == 0)
                     {
-                        <p class="muted">No insights yet for this topic.</p>
+                        <div class="empty-state">
+                            <span class="empty-icon">🔍</span>
+                            <p class="muted">No insights yet for this topic.</p>
+                        </div>
                     }
                     else
                     {
@@ -813,6 +824,21 @@
         {
             GoBackSlideAsync();
         }
+        else if (e.Key is "p" or "P")
+        {
+            ToggleCustomPollForm();
+        }
+        else if (e.Key is "Escape")
+        {
+            if (showCustomPollForm)
+            {
+                showCustomPollForm = false;
+            }
+            else if (answeringQuestionId is not null)
+            {
+                CancelAnswer();
+            }
+        }
     }
 
     // Import actions
@@ -985,11 +1011,11 @@
         border-radius: 0 0.3rem 0.3rem 0;
         cursor: pointer;
         margin-bottom: 0.15rem;
-        transition: all 0.15s;
+        transition: all 0.2s ease;
     }
 
     .topic-item:hover {
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.08);
     }
 
     .topic-item.current {
@@ -1318,12 +1344,18 @@
     }
 
     .slide-progress {
-        font-size: 0.8rem;
-        opacity: 0.6;
+        font-size: 1rem;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.95);
+        background: rgba(233, 69, 96, 0.15);
+        padding: 0.2rem 0.75rem;
+        border-radius: 1rem;
+        letter-spacing: 0.03em;
     }
 
     .no-active-slide {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         flex: 1;
@@ -1552,6 +1584,7 @@
         border-radius: 0.3rem;
         padding: 0.35rem 0.5rem;
         overflow: hidden;
+        transition: all 0.2s ease;
     }
 
     .poll-option-fill {
@@ -1696,5 +1729,111 @@
     @@keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.6; }
+    }
+
+    @@keyframes poll-glow {
+        0%, 100% { box-shadow: 0 0 8px rgba(233, 69, 96, 0.15); }
+        50% { box-shadow: 0 0 16px rgba(233, 69, 96, 0.35); }
+    }
+
+    /* Active poll glow */
+    .right-poll-section.poll-active-glow {
+        animation: poll-glow 2s ease-in-out infinite;
+    }
+
+    /* Keyboard shortcuts hint */
+    .keyboard-hints {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        padding: 0.3rem 0 0;
+        font-size: 0.6rem;
+        opacity: 0.3;
+        user-select: none;
+    }
+
+    .keyboard-hints span {
+        background: rgba(255, 255, 255, 0.06);
+        padding: 0.15rem 0.4rem;
+        border-radius: 0.2rem;
+        letter-spacing: 0.02em;
+    }
+
+    /* Empty state styling */
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem 0.5rem;
+        text-align: center;
+    }
+
+    .empty-icon {
+        font-size: 1.5rem;
+        opacity: 0.35;
+        margin-bottom: 0.4rem;
+        display: block;
+    }
+
+    .empty-state .muted {
+        margin: 0;
+    }
+
+    /* Smooth transitions on interactive elements */
+    .btn, .btn-sm, .btn-outline, .btn-answer, .btn-insight, .btn-inline, .import-toggle {
+        transition: all 0.2s ease;
+    }
+
+    .question-item {
+        transition: background 0.2s ease;
+    }
+
+    .question-item:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Custom scrollbar */
+    .left-column::-webkit-scrollbar,
+    .center-column::-webkit-scrollbar,
+    .right-column::-webkit-scrollbar,
+    .qa-feed::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .left-column::-webkit-scrollbar-track,
+    .center-column::-webkit-scrollbar-track,
+    .right-column::-webkit-scrollbar-track,
+    .qa-feed::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .left-column::-webkit-scrollbar-thumb,
+    .center-column::-webkit-scrollbar-thumb,
+    .right-column::-webkit-scrollbar-thumb,
+    .qa-feed::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+    }
+
+    .left-column::-webkit-scrollbar-thumb:hover,
+    .center-column::-webkit-scrollbar-thumb:hover,
+    .right-column::-webkit-scrollbar-thumb:hover,
+    .qa-feed::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Responsive safeguards */
+    @@media (max-width: 1200px) {
+        .dashboard-grid {
+            grid-template-columns: 180px 1fr 280px;
+        }
+    }
+
+    @@media (max-width: 900px) {
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr auto;
+        }
     }
 </style>

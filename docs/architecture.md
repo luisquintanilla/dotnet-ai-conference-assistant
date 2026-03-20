@@ -8,9 +8,9 @@
 │                                                            │
 │  /                          → Session hub (list + create)  │
 │  /create                    → Create new session form      │
-│  /presenter/{SessionCode}   → Speaker dashboard (PIN gate) │
+│  /presenter/{SessionCode}   → Speaker 3-column dashboard   │
 │  /session/{SessionCode}     → Attendee participation       │
-│  /display/{SessionCode}     → Projection view (big screen) │
+│  /display/{SessionCode}     → Projection view + QR code    │
 │  slides.md                  → Markdown slide deck           │
 │                                                            │
 │  Real-time: SignalR (built into Blazor Server circuits)    │
@@ -317,6 +317,7 @@ Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`,
 <PackageReference Include="Microsoft.Agents.AI.OpenAI" />
 <PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" />
 <PackageReference Include="Microsoft.Extensions.DataIngestion" />
+<PackageReference Include="QRCoder" />
 ```
 Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`, `ConferenceAssistant.Agents`, `ConferenceAssistant.Mcp`
 
@@ -352,19 +353,21 @@ Speaker clicks "Generate Poll"
   → Presenter.razor sends event via SessionStateService
     → PollGenerationWorkflow starts
       → SurveyArchitect agent:
-          1. Gets current topic from SessionService
+          1. Gets current topic from SessionService (may be null)
           2. Calls search_knowledge tool → VectorStore.SearchAsync()
           3. Gets context about what audience already knows
           4. Generates poll question + options via IChatClient
           5. Calls create_poll tool → PollService.CreatePoll()
-      → Poll in Draft status
-  → Speaker reviews poll in Presenter dashboard
+      → Poll in Draft status (TopicId is optional — session-level polls allowed)
+  → Speaker reviews poll in Presenter center column
   → Speaker clicks "Launch"
     → PollService.LaunchPoll() → status = Active
       → SignalR pushes to all circuits
         → Session.razor shows voting UI
         → Display.razor shows live chart
 ```
+
+> **Note:** `Poll.TopicId` is `string?` — polls can be created without an active topic. Custom polls pass `activeTopic?.Id` (null if no topic is active), enabling session-level polls.
 
 ### Flow 2: Response Analysis
 ```
@@ -403,6 +406,8 @@ Attendee types question in Session.razor
         → QuestionFeed updates on all views
 ```
 
+> **Global Q&A in Presenter view:** The Presenter right column shows all questions regardless of topic. Each question displays a topic badge indicating which topic it originated from, giving the speaker full visibility across the session.
+
 ### Flow 4: Session Summary (The Closer)
 ```
 Copilot SDK console app runs:
@@ -424,10 +429,24 @@ Speaker clicks "Next" (or presses →/Space)
   → Presenter.razor calls SessionService.AdvanceSlideAsync()
     → _activeSlideIndex incremented
       → SlideChanged event fires
+        → SyncTopicToSlide in SessionContext auto-activates topic
+          when slide crosses a topic boundary
         → Display.razor receives event via InvokeAsync
           → SlideRenderer re-renders with new slide
         → Presenter.razor updates preview + speaker notes
+        → Left column topic outline auto-highlights current topic
 ```
+
+#### Keyboard Shortcuts (Presenter)
+
+| Key | Action |
+|-----|--------|
+| `→` / `Space` | Advance slide |
+| `←` | Previous slide |
+| `P` | Quick-launch poll |
+| `Esc` | Close active overlay |
+
+Keyboard shortcuts are suppressed when focus is in a text input (poll question, answer form, etc.).
 
 ---
 
@@ -495,7 +514,11 @@ The `/display/{SessionCode}` view renders content using this priority order:
 1. **Active Poll** — poll voting/results take over the full screen
 2. **Active Slide** — the current slide from the deck
 3. **Latest Insight** — AI-generated insight panel
-4. **Cascade Visualization** — the "snowball" knowledge cascade
+4. **QR Code (idle state)** — large "Scan to Join" QR code with session code + URL
+
+When content is active (slide or poll), a smaller QR code appears in the sidebar so latecomers can still join.
+
+The QR code is generated server-side by `QrCodeGenerator.cs`, a static utility using `PngByteQRCode` from the QRCoder NuGet package for cross-platform compatibility (no native image dependencies).
 
 ### Speaker Notes
 
@@ -540,7 +563,7 @@ GitHub Repo URL
 ### Entry Points
 
 1. **Create Session page** (`/create`) — "🐙 Import from GitHub" template option
-2. **Presenter page** (`/presenter/{code}`) — "📥 Import" tab for enriching KB during sessions
+2. **Presenter page** (`/presenter/{code}`) — "📥 Import" section (left column) for enriching KB during sessions
 
 ### Data Flow
 

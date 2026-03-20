@@ -167,11 +167,10 @@ Open this in your "speaker laptop" browser window.
 > Enter the host PIN (default session uses `0000`) to unlock the full dashboard.
 > PIN validation is per Blazor circuit (browser tab) — no cookies or tokens.
 
-The presenter uses a **split view** layout:
-- **Top half** — Slide zone: slide preview + speaker notes (always visible)
-- **Bottom half** — Tabbed tools zone with three tabs: 📊 **Polls** | ❓ **Q&A** | 📋 **Topic**
-
-Tab badges show the question count and an active poll indicator.
+The presenter uses a **3-column layout** (simultaneous, no tabs):
+- **Left column** (~220px) — Topic outline: auto-highlights current topic based on slide's TopicId, click-to-jump navigation, collapsible import section
+- **Center column** (flex) — Current slide preview, up-next preview, speaker notes, slide navigation, quick poll launch
+- **Right column** (~320px) — Global Q&A feed (all topics), active poll results, insights
 
 ### 4a. Session Setup State
 
@@ -180,10 +179,10 @@ Tab badges show the question count and an active poll indicator.
 | 1 | Session title shows | "The Microsoft AI Stack for .NET" |
 | 2 | Status badge | Shows "Setup" |
 | 3 | Knowledge base counter | Shows "📚 X records" (X > 0 if AI configured) |
-| 4 | 5 topics in left panel | meai, knowledge, agents, mcp, closer |
+| 4 | 5 topics in left column | meai, knowledge, agents, mcp, closer |
 | 5 | "🚀 Go Live" button visible | Yes |
 | 6 | Topic activate buttons | Should NOT appear (session not live yet) |
-| 7 | Tabbed tools zone | Three tabs visible: 📊 Polls, ❓ Q&A, 📋 Topic |
+| 7 | 3-column layout | Left: topic outline, Center: slide zone, Right: Q&A + polls + insights |
 
 ### 4b. Go Live
 
@@ -197,17 +196,18 @@ Tab badges show the question count and an active poll indicator.
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | Click **▶ Activate** on "Microsoft.Extensions.AI" | Topic becomes active, main panel shows title + description + talking points |
+| 1 | Click **▶ Activate** on "Microsoft.Extensions.AI" | Topic becomes active, left column highlights it |
 | 2 | Active topic badge | Shows "Active" status |
 | 3 | Other topics | Still show "Upcoming" |
 | 4 | Click **✓ Complete** on active topic | Status changes to "Completed" |
 | 5 | Activate next topic | New topic becomes active, previous stays completed |
+| 6 | Navigate slides past topic boundary | Topic auto-activates via SyncTopicToSlide (left column updates) |
 
 ### 4d. Polls — Suggested
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | Activate topic "meai" | Poll section appears |
+| 1 | Activate topic "meai" | Poll section appears in center column |
 | 2 | Dropdown shows suggested polls | "What's your experience level with AI in .NET?" etc. |
 | 3 | Select a poll from dropdown | **Launch** button becomes enabled |
 | 4 | Click **Launch** | Poll appears with options + vote counts (all 0) |
@@ -229,6 +229,7 @@ Tab badges show the question count and an active poll indicator.
 | 1 | Click **✏️ Custom Poll** | Form with question input + 2 option fields |
 | 2 | Fill in question + ≥2 options | **🚀 Create & Go Live** becomes enabled |
 | 3 | Click **🚀 Create & Go Live** | Custom poll created and goes live |
+| 4 | Create poll with no active topic | Poll created as session-level (TopicId is null) |
 
 ---
 
@@ -249,7 +250,7 @@ code from the startup logs (e.g., `/session/XXXXXXXX`).
 |---|--------|----------|
 | 1 | Click a poll option | Vote registered |
 | 2 | Results update | Vote count increments |
-| 3 | Switch to Presenter tab | Presenter sees updated counts + percentages |
+| 3 | Switch to Presenter | Presenter sees updated counts + percentages in right column |
 
 ### 5c. Questions + AI Auto-Answer
 
@@ -259,9 +260,10 @@ code from the startup logs (e.g., `/session/XXXXXXXX`).
 | 2 | Click **Send** | Question submitted, input clears |
 | 3 | Question in "🔥 Top Questions" | With 👍 0 count |
 | 4 | Click 👍 on a question | Count increments |
-| 5 | Switch to Presenter tab | Question visible in "❓ Audience Questions" |
+| 5 | Switch to Presenter | Question visible in right column "❓ Audience Questions" (global — all topics) |
 | 6 | Wait 5-10 seconds | 🤖 AI answer appears automatically (blue-tinted, with AI badge) |
 | 7 | AI answer uses KB context | Answer references session outline content |
+| 8 | Topic badge on question | Shows which topic the question came from |
 
 ### 5d. Answering / Overriding (from Presenter)
 
@@ -280,11 +282,12 @@ Open in a third browser window (simulates projector/big screen).
 
 | # | Check | Expected |
 |---|-------|----------|
-| 1 | Before Go Live | "Waiting for session to begin..." |
-| 2 | After Go Live | Session title + active topic in header |
+| 1 | Before Go Live | Large QR code with "Scan to Join" + session code + URL |
+| 2 | After Go Live | Session title + active topic in header; sidebar QR code visible |
 | 3 | When poll active | PollResultsChart renders with live bar chart |
 | 4 | Vote from Session tab | Display updates with new vote counts |
-| 5 | When no active poll | Shows InsightCard or CascadeVisualization |
+| 5 | When no active poll/slide | Shows QR code (idle state) |
+| 6 | When slide active | Current slide full-screen; smaller QR code in sidebar |
 
 ---
 
@@ -517,7 +520,8 @@ SETUP:
 
 ACT 1 — GO LIVE:
   3. Presenter: Click "🚀 Go Live"
-     → Display updates from "Waiting..." to live session header
+     → Display updates from QR code idle state to live session header
+     → QR code moves to sidebar; session title visible
      → Session tab shows active session
 
 ACT 2 — SEGMENT 1 (Microsoft.Extensions.AI):
@@ -550,7 +554,7 @@ ACT 4 — THE CLOSER:
   14. Open Copilot CLI → point at MCP endpoint:
       "Summarize this conference session using the MCP server at <url>/mcp"
   15. Copilot calls generate_session_summary tool
-      → Display shows cascade visualization lighting up
+      → Display shows summary content with QR code in sidebar
       → Summary includes all poll results, insights, questions, KB stats
 ```
 
@@ -635,36 +639,39 @@ Verify the complete data flow through one topic:
 1. Navigate to `/presenter/{SessionCode}` and enter the host PIN
 2. Click **Go Live** to start the session
 3. Activate the first topic (Microsoft.Extensions.AI)
-4. ✅ The top half (slide zone) should show a **slide preview** with the topic's first slide
+4. ✅ The center column should show a **slide preview** with the topic's first slide
 5. ✅ **Speaker notes** should appear below the preview (with 🎤 icon)
 6. Click **Next ▶** — slide advances, preview and notes update
 7. Click **◀ Previous** — slide goes back
 8. ✅ Progress shows "Slide X of Y"
 9. ✅ "Up Next" preview shows the next slide
+10. ✅ Left column topic outline auto-highlights the current topic based on slide's TopicId
 
-### Tabbed Tools Verification
-1. After verifying slides work, click the **📊 Polls** tab
-2. ✅ Poll controls are accessible (suggested polls dropdown, launch button, etc.)
-3. Click the **❓ Q&A** tab
-4. ✅ Questions area is visible (audience questions list, AI answers)
-5. Click the **📋 Topic** tab
-6. ✅ Topic details are displayed (description, talking points)
-7. ✅ Slide preview in the top half stays visible regardless of which tab is active
-8. ✅ Tab badges update: question count on ❓ Q&A, active poll indicator on 📊 Polls
+### Three-Column Layout Verification
+1. After verifying slides work, confirm all three columns are visible simultaneously
+2. ✅ **Left column** (~220px): Topic outline with current topic highlighted
+3. ✅ **Center column** (flex): Slide preview, up-next, speaker notes, navigation, quick poll launch
+4. ✅ **Right column** (~320px): Global Q&A feed (questions from all topics with topic badges), active poll results, insights
+5. ✅ Clicking a topic in the left column jumps to that topic's first slide
+6. ✅ Navigating slides past a topic boundary auto-activates the new topic (SyncTopicToSlide)
+7. ✅ Import section in the left column is collapsible
 
 ### Display Slide Rendering
 1. Open `/display/{SessionCode}` in a separate browser window
-2. ✅ When no poll is active, the display shows the **current slide full-screen**
-3. ✅ Large text, dark background, readable from back of room
-4. ✅ Progress dots at the bottom show current position
-5. Advance a slide on the presenter → ✅ display updates in real-time
+2. ✅ When idle (no poll/slide active), the display shows a **large QR code** with "Scan to Join" + session code + URL
+3. ✅ When a slide is active, the slide shows full-screen with a smaller QR code in the sidebar
+4. ✅ Large text, dark background, readable from back of room
+5. ✅ Progress dots at the bottom show current position
+6. Advance a slide on the presenter → ✅ display updates in real-time
 
 ### Keyboard Navigation
-1. Click in the main panel area on the presenter page (to focus it)
+1. Click in the center column area on the presenter page (to focus it)
 2. Press **→** (right arrow) → slide advances
 3. Press **←** (left arrow) → slide goes back
 4. Press **Space** → slide advances
-5. ✅ Keyboard navigation does NOT trigger when typing in a text input (poll question, answer form)
+5. Press **P** → quick-launch poll
+6. Press **Esc** → close active overlay
+7. ✅ Keyboard navigation does NOT trigger when typing in a text input (poll question, answer form)
 
 ### Poll/Slide Priority
 1. While a slide is showing on the display, launch a poll
@@ -676,6 +683,8 @@ Verify the complete data flow through one topic:
 1. Activate a different topic (e.g., "Knowledge Engineering") on the presenter
 2. ✅ The slide automatically jumps to the **first slide** of that topic
 3. ✅ Both presenter and display update accordingly
+4. Navigate slides forward past a topic boundary (without clicking a topic)
+5. ✅ The topic auto-activates via SyncTopicToSlide — left column highlights the new topic
 
 ### Speaker Notes Privacy
 1. While slides are showing, compare `/presenter/{SessionCode}` and `/display/{SessionCode}`
@@ -700,7 +709,7 @@ Verify the complete data flow through one topic:
 10. Optionally remove topics using ✕ button
 11. Click **"🚀 Create Session"**
 12. ✅ Verify: Redirected to presenter page with imported topics
-13. ✅ Verify: Slides tab in Presenter shows generated slides
+13. ✅ Verify: Center column in Presenter shows generated slides
 14. ✅ Verify: Display page (`/display/{code}`) shows slides when navigating
 15. ✅ Verify: Slide types include Title, Section, Content, and Poll slides
 16. ✅ Verify: Speaker notes appear for each slide in the Presenter view
@@ -708,7 +717,7 @@ Verify the complete data flow through one topic:
 ### Importing Content During a Session
 
 1. Open presenter dashboard for an active session
-2. Click the **"📥 Import"** tab
+2. Expand the **"📥 Import"** section in the left column
 3. Paste a GitHub repo URL
 4. Click **"📥 Import Repository"**
 5. ✅ Verify: Import completes, history entry appears
@@ -726,7 +735,7 @@ Verify the complete data flow through one topic:
 
 1. Import a GitHub repo via the Create Session page
 2. After AI drafting completes, create the session
-3. Open the Presenter dashboard → Slides tab
+3. Open the Presenter dashboard → center column shows slides
 4. ✅ Verify: Title slide shows session name
 5. ✅ Verify: Section slides for each topic
 6. ✅ Verify: Content slides with talking points as bullets
@@ -758,10 +767,9 @@ BUILD & LAUNCH
 PAGES
 [ ] Home (/) — session hub: lists active sessions + "Create New Session" button
 [ ] Presenter (/presenter/{code}) — PIN gate prompts for host PIN, then unlocks dashboard
-[ ] Presenter dashboard — split view: slide zone (top) + tabbed tools (bottom), 5 topics visible
-[ ] Presenter tabs — 📊 Polls | ❓ Q&A | 📋 Topic all render, slide preview stays visible across tabs
-[ ] Session (/session/{code}) — shows waiting message before Go Live
-[ ] Display (/display/{code}) — shows waiting message before Go Live
+[ ] Presenter dashboard — 3-column layout: topic outline (left) + slides/notes (center) + Q&A/polls/insights (right)
+[ ] All three columns visible simultaneously — no tabs
+[ ] Display (/display/{code}) — shows QR code "Scan to Join" before Go Live
 
 MULTI-SESSION
 [ ] Home page lists default session
@@ -803,7 +811,7 @@ GITHUB REPOSITORY IMPORT
 [ ] Import stats show document count
 [ ] AI-drafted topics appear with talking points and polls
 [ ] "🚀 Create Session" → redirected to presenter with imported topics
-[ ] Presenter "📥 Import" tab — paste URL → "📥 Import Repository" works
+[ ] Presenter "📥 Import" section (left column) — paste URL → "📥 Import Repository" works
 [ ] KB record count increases after import
 [ ] "➕ Add All Topics" adds drafted topics to session
 ```
