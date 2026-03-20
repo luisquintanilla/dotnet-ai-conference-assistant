@@ -71,279 +71,41 @@
             </div>
         </div>
 
+
         <div class="dashboard-grid">
-            <!-- Topic Navigation (left panel) -->
-            <div class="panel topic-nav">
-                <h2>Topics</h2>
-                <div class="topic-list">
+            <!-- Left Column: Topic Outline + Import -->
+            <div class="left-column">
+                <div class="topic-outline">
+                    <h3>📋 Topics</h3>
+                    @{ var currentTopicId = activeSlide?.TopicId; }
                     @foreach (var topic in session.Topics.OrderBy(t => t.Order))
                     {
-                        <div class="topic-row @(topic.Status == TopicStatus.Active ? "active" : "")">
-                            <TopicBadge Topic="@topic" />
-                            @if (session.Status == SessionStatus.Live)
+                        var slideCount = sessionContext?.AllSlides.Count(s => s.TopicId == topic.Id) ?? 0;
+                        <div class="topic-item @(topic.Id == currentTopicId ? "current" : "") @(topic.Status == TopicStatus.Completed ? "completed" : "")"
+                             @onclick="() => JumpToTopic(topic.Id)">
+                            <div class="topic-item-title">
+                                @if (topic.Status == TopicStatus.Completed)
+                                {
+                                    <span class="topic-check">✓</span>
+                                }
+                                @topic.Title
+                            </div>
+                            @if (slideCount > 0)
                             {
-                                @if (topic.Status == TopicStatus.Upcoming)
-                                {
-                                    <button class="btn btn-sm" @onclick="() => ActivateTopic(topic.Id)">▶ Activate</button>
-                                }
-                                else if (topic.Status == TopicStatus.Active)
-                                {
-                                    <button class="btn btn-sm btn-complete" @onclick="() => CompleteTopic(topic.Id)">✓ Complete</button>
-                                }
+                                <span class="topic-slide-count">@slideCount slides</span>
                             }
                         </div>
                     }
                 </div>
-            </div>
 
-            <!-- Active Topic Panel (main area) -->
-            <div class="panel main-panel" tabindex="0" @onkeydown="HandleSlideKeydown">
-                <div class="tab-bar">
-                    <button class="tab-btn @(activeTab == "slides" ? "active" : "")" @onclick='() => SetActiveTab("slides")'>
-                        🎬 Slides
-                        @if (activeSlide is not null)
-                        {
-                            <span class="tab-badge">@((sessionContext?.ActiveSlideIndex ?? -1) + 1)/@(sessionContext?.TotalSlides ?? 0)</span>
-                        }
+                <div class="import-section">
+                    <button class="import-toggle" @onclick="() => isImportExpanded = !isImportExpanded">
+                        📥 Import @(isImportExpanded ? "▾" : "▸")
                     </button>
-                    <button class="tab-btn @(activeTab == "polls" ? "active" : "")" @onclick='() => SetActiveTab("polls")'>
-                        📊 Polls @if (activePoll?.Status == PollStatus.Active) {<span class="tab-badge live">LIVE</span>}
-                    </button>
-                    <button class="tab-btn @(activeTab == "qa" ? "active" : "")" @onclick='() => SetActiveTab("qa")'>
-                        ❓ Q&amp;A @if (allQuestions.Count > 0) {<span class="tab-badge">@allQuestions.Count</span>}
-                    </button>
-                    <button class="tab-btn @(activeTab == "topic" ? "active" : "")" @onclick='() => SetActiveTab("topic")'>
-                        📋 Topic
-                    </button>
-                    <button class="tab-btn @(activeTab == "import" ? "active" : "")" @onclick='() => SetActiveTab("import")'>
-                        📥 Import
-                    </button>
-                </div>
-
-                <div class="tab-content">
-                    @if (activeTab == "slides")
+                    @if (isImportExpanded)
                     {
-                        @if (activeSlide is not null)
-                        {
-                            <div class="slides-tab">
-                                <div class="slide-previews">
-                                    <div class="slide-preview-current">
-                                        <SlideRenderer Slide="@activeSlide" Compact="true" />
-                                    </div>
-                                    @if (nextSlide is not null)
-                                    {
-                                        <div class="slide-preview-next">
-                                            <span class="up-next-label">Up Next</span>
-                                            <SlideRenderer Slide="@nextSlide" Compact="true" />
-                                        </div>
-                                    }
-                                </div>
-
-                                @if (!string.IsNullOrWhiteSpace(activeSlide.SpeakerNotes))
-                                {
-                                    <div class="speaker-notes">
-                                        <span>🎤</span> @activeSlide.SpeakerNotes
-                                    </div>
-                                }
-
-                                <div class="slide-nav-controls">
-                                    <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) <= 0)">◀ Prev</button>
-                                    <span class="slide-progress">Slide @((sessionContext?.ActiveSlideIndex ?? -1) + 1) / @(sessionContext?.TotalSlides ?? 0)</span>
-                                    <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) >= (sessionContext?.TotalSlides ?? 0) - 1)">Next ▶</button>
-                                </div>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="no-active-topic">
-                                <p>Activate a topic from the left panel to start presenting.</p>
-                            </div>
-                        }
-                    }
-                    else if (activeTab == "polls")
-                    {
-                                @if (activePoll is null || activePoll.Status == PollStatus.Closed)
-                                {
-                                    @if (closedPoll is not null)
-                                    {
-                                        <div class="closed-poll-results">
-                                            <h4>Last Poll Results: @closedPoll.Question</h4>
-                                            <PollResultsChart Poll="@closedPoll" Results="@closedPollResults" />
-                                        </div>
-                                    }
-
-                                    <div class="poll-actions">
-                                        @if (activeTopic is not null)
-                                        {
-                                            <button class="btn btn-outline" @onclick="AutoGeneratePoll">🤖 Auto-Generate Poll</button>
-                                        }
-
-                                        @if (activeTopic?.SuggestedPolls.Count > 0)
-                                        {
-                                            <div class="suggested-poll-picker">
-                                                <select @bind="selectedSuggestedPollIndex">
-                                                    <option value="-1">— Use Suggested Poll —</option>
-                                                    @for (var i = 0; i < activeTopic.SuggestedPolls.Count; i++)
-                                                    {
-                                                        <option value="@i">@activeTopic.SuggestedPolls[i].Question</option>
-                                                    }
-                                                </select>
-                                                <button class="btn btn-sm btn-primary"
-                                                        disabled="@(selectedSuggestedPollIndex < 0)"
-                                                        @onclick="LaunchSelectedSuggestedPoll">
-                                                    Launch
-                                                </button>
-                                            </div>
-                                        }
-
-                                        <div class="custom-poll-form">
-                                            <button class="btn btn-outline" @onclick="ToggleCustomPollForm">
-                                                ✏️ Custom Poll
-                                            </button>
-                                            @if (showCustomPollForm)
-                                            {
-                                                <div class="custom-poll-inputs">
-                                                    <input type="text" @bind="customPollQuestion" placeholder="Poll question..." />
-                                                    @for (var i = 0; i < customPollOptions.Count; i++)
-                                                    {
-                                                        var index = i;
-                                                        <div class="option-row">
-                                                            <input type="text"
-                                                                   value="@customPollOptions[index]"
-                                                                   @onchange="(e) => UpdateCustomOption(index, e.Value?.ToString() ?? string.Empty)"
-                                                                   placeholder="Option @(index + 1)..." />
-                                                            @if (customPollOptions.Count > 2)
-                                                            {
-                                                                <button class="btn-icon" @onclick="() => RemoveCustomOption(index)">✕</button>
-                                                            }
-                                                        </div>
-                                                    }
-                                                    <div class="custom-poll-actions">
-                                                        <button class="btn btn-sm" @onclick="AddCustomOption">+ Add Option</button>
-                                                        <button class="btn btn-sm btn-primary"
-                                                                disabled="@(!IsCustomPollValid)"
-                                                                @onclick="LaunchCustomPoll">
-                                                            🚀 Create &amp; Go Live
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="active-poll">
-                                        <h4>@activePoll.Question</h4>
-                                        <div class="poll-options-display">
-                                            @foreach (var option in activePoll.Options)
-                                            {
-                                                var count = activePollResults?.GetValueOrDefault(option, 0) ?? 0;
-                                                var total = activePollResults?.Values.Sum() ?? 0;
-                                                var pct = total > 0 ? (int)(100.0 * count / total) : 0;
-                                                <div class="poll-option-bar">
-                                                    <div class="poll-option-fill" style="width: @(pct)%"></div>
-                                                    <span class="poll-option-label">@option</span>
-                                                    <span class="poll-option-count">@count (@(pct)%)</span>
-                                                </div>
-                                            }
-                                        </div>
-                                        @if (activePoll.Status == PollStatus.Draft)
-                                        {
-                                            <button class="btn btn-primary" @onclick="() => ActivatePollAsync(activePoll.Id)">📡 Go Live</button>
-                                        }
-                                        else if (activePoll.Status == PollStatus.Active)
-                                        {
-                                            <button class="btn btn-danger" @onclick="() => ClosePollAsync(activePoll.Id)">🔒 Close Poll</button>
-                                        }
-                                    </div>
-                                }
-                    }
-                    else if (activeTab == "qa")
-                    {
-                        @if (allQuestions.Count == 0)
-                        {
-                            <p class="muted">No questions yet. Attendees can ask questions from their devices.</p>
-                        }
-                        else
-                        {
-                            @foreach (var q in allQuestions)
-                            {
-                                <div class="question-item">
-                                    <div class="question-header">
-                                        <span class="upvote-count">👍 @q.Upvotes</span>
-                                        <span class="question-text">@q.Text</span>
-                                        @if (!string.IsNullOrEmpty(q.TopicId))
-                                        {
-                                            var topic = session?.Topics.FirstOrDefault(t => t.Id == q.TopicId);
-                                            @if (topic is not null)
-                                            {
-                                                <span class="question-topic-badge">@topic.Title</span>
-                                            }
-                                        }
-                                    </div>
-                                    @if (q.Answers.Count > 0)
-                                    {
-                                        @foreach (var answer in q.Answers)
-                                        {
-                                            <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
-                                                @if (answer.IsAiGenerated)
-                                                {
-                                                    <span class="ai-badge">🤖 AI</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="human-badge">💬 @answer.AuthorLabel</span>
-                                                }
-                                                <strong>A:</strong> @answer.Text
-                                            </div>
-                                        }
-                                    }
-                                    @if (answeringQuestionId == q.Id)
-                                    {
-                                        <div class="answer-form">
-                                            <input type="text" @bind="answerText" placeholder="Type your answer..." />
-                                            <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
-                                            <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <button class="btn btn-sm" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
-                                    }
-                                </div>
-                            }
-                        }
-                    }
-                    else if (activeTab == "topic")
-                    {
-                        @if (activeTopic is not null)
-                        {
-                            <h2>🎯 @activeTopic.Title</h2>
-                            @if (!string.IsNullOrWhiteSpace(activeTopic.Description))
-                            {
-                                <p class="topic-description">@activeTopic.Description</p>
-                            }
-                            @if (activeTopic.TalkingPoints.Count > 0)
-                            {
-                                <ul class="talking-points">
-                                    @foreach (var point in activeTopic.TalkingPoints)
-                                    {
-                                        <li>@point</li>
-                                    }
-                                </ul>
-                            }
-                        }
-                        else
-                        {
-                            <p class="muted">Activate a topic to see details.</p>
-                        }
-                    }
-                    else if (activeTab == "import")
-                    {
-                        <div class="import-tab">
-                            <h3>📥 Import from GitHub</h3>
-                            <p class="import-description">Import content from a GitHub repository to enrich the knowledge base for Q&amp;A.</p>
+                        <div class="import-content">
+                            <p class="import-description">Import from GitHub to enrich the knowledge base.</p>
 
                             @if (!string.IsNullOrWhiteSpace(importRepoStatus))
                             {
@@ -357,8 +119,8 @@
 
                             @if (showRepoDedupWarning)
                             {
-                                <div class="import-dedup-warning">⚠️ This repository was already imported. Import again?
-                                    <button class="btn-inline" @onclick="ConfirmRepoReimport">Yes, re-import</button>
+                                <div class="import-dedup-warning">⚠️ Already imported. Import again?
+                                    <button class="btn-inline" @onclick="ConfirmRepoReimport">Yes</button>
                                     <button class="btn-inline" @onclick="() => showRepoDedupWarning = false">Cancel</button>
                                 </div>
                             }
@@ -372,7 +134,7 @@
                                     }
                                     else
                                     {
-                                        <span>📥 Import Repository</span>
+                                        <span>📥 Import</span>
                                     }
                                 </button>
                             </div>
@@ -402,7 +164,7 @@
                                         <div class="import-entry">
                                             <span class="import-url">@entry.Url</span>
                                             <span class="import-count">📄 @entry.DocumentCount docs</span>
-                                            <span class="import-topics">🎯 @entry.TopicCount topics drafted</span>
+                                            <span class="import-topics">🎯 @entry.TopicCount topics</span>
                                         </div>
                                     }
                                 </div>
@@ -428,33 +190,225 @@
                 </div>
             </div>
 
-            <!-- Insights Panel (right side) -->
-            <div class="panel insights-panel">
-                <h2>💡 Insights</h2>
-                @if (activeTopic is not null)
+            <!-- Center Column: Slides + Navigation + Poll Launch -->
+            <div class="panel center-column" tabindex="0" @onkeydown="HandleSlideKeydown">
+                @if (activeSlide is not null)
                 {
-                    <button class="btn btn-sm btn-insight" @onclick="GenerateInsightsManually" disabled="@isGeneratingInsights">
-                        @if (isGeneratingInsights)
-                        {
-                            <span>⏳ Generating...</span>
-                        }
-                        else
-                        {
-                            <span>🔄 Generate Insights</span>
-                        }
-                    </button>
-                }
-                @if (topicInsights.Count == 0)
-                {
-                    <p class="muted">No insights yet for this topic.</p>
+                    <div class="center-slide-area">
+                        <SlideRenderer Slide="@activeSlide" Compact="true" />
+                    </div>
+
+                    @if (nextSlide is not null)
+                    {
+                        <div class="up-next-preview">
+                            <span class="up-next-label">Up Next</span>
+                            <SlideRenderer Slide="@nextSlide" Compact="true" />
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(activeSlide.SpeakerNotes))
+                    {
+                        <div class="center-notes">
+                            <span>🎤</span> @activeSlide.SpeakerNotes
+                        </div>
+                    }
+
+                    <div class="center-nav">
+                        <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) <= 0)">◀ Prev</button>
+                        <span class="slide-progress">Slide @((sessionContext?.ActiveSlideIndex ?? -1) + 1) / @(sessionContext?.TotalSlides ?? 0)</span>
+                        <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) >= (sessionContext?.TotalSlides ?? 0) - 1)">Next ▶</button>
+                    </div>
                 }
                 else
                 {
-                    @foreach (var insight in topicInsights)
-                    {
-                        <InsightCard Insight="@insight" />
-                    }
+                    <div class="no-active-slide">
+                        <p>Activate a topic or advance to a slide to start presenting.</p>
+                    </div>
                 }
+
+                <!-- Quick Poll Launch -->
+                @if (activePoll is null || activePoll.Status == PollStatus.Closed)
+                {
+                    <div class="poll-launch-zone">
+                        @if (activeTopic is not null)
+                        {
+                            <button class="btn btn-outline btn-sm" @onclick="AutoGeneratePoll">🤖 Auto-Generate Poll</button>
+                        }
+
+                        @if (activeTopic?.SuggestedPolls.Count > 0)
+                        {
+                            <div class="suggested-poll-picker">
+                                <select @bind="selectedSuggestedPollIndex">
+                                    <option value="-1">— Use Suggested Poll —</option>
+                                    @for (var i = 0; i < activeTopic.SuggestedPolls.Count; i++)
+                                    {
+                                        <option value="@i">@activeTopic.SuggestedPolls[i].Question</option>
+                                    }
+                                </select>
+                                <button class="btn btn-sm btn-primary"
+                                        disabled="@(selectedSuggestedPollIndex < 0)"
+                                        @onclick="LaunchSelectedSuggestedPoll">
+                                    Launch
+                                </button>
+                            </div>
+                        }
+
+                        <button class="btn btn-outline btn-sm" @onclick="ToggleCustomPollForm">✏️ Custom Poll</button>
+                        @if (showCustomPollForm)
+                        {
+                            <div class="custom-poll-inputs">
+                                <input type="text" @bind="customPollQuestion" placeholder="Poll question..." />
+                                @for (var i = 0; i < customPollOptions.Count; i++)
+                                {
+                                    var index = i;
+                                    <div class="option-row">
+                                        <input type="text"
+                                               value="@customPollOptions[index]"
+                                               @onchange="(e) => UpdateCustomOption(index, e.Value?.ToString() ?? string.Empty)"
+                                               placeholder="Option @(index + 1)..." />
+                                        @if (customPollOptions.Count > 2)
+                                        {
+                                            <button class="btn-icon" @onclick="() => RemoveCustomOption(index)">✕</button>
+                                        }
+                                    </div>
+                                }
+                                <div class="custom-poll-actions">
+                                    <button class="btn btn-sm" @onclick="AddCustomOption">+ Add Option</button>
+                                    <button class="btn btn-sm btn-primary"
+                                            disabled="@(!IsCustomPollValid)"
+                                            @onclick="LaunchCustomPoll">
+                                        🚀 Create &amp; Go Live
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Right Column: Q&A + Active Poll + Insights -->
+            <div class="right-column">
+                <div class="qa-feed">
+                    <h3>❓ Q&amp;A <span class="qa-count">(@allQuestions.Count)</span></h3>
+                    @if (allQuestions.Count == 0)
+                    {
+                        <p class="muted">No questions yet. Attendees can ask questions from their devices.</p>
+                    }
+                    else
+                    {
+                        @foreach (var q in allQuestions)
+                        {
+                            <div class="question-item">
+                                <div class="question-header">
+                                    <span class="upvote-count">👍 @q.Upvotes</span>
+                                    <span class="question-text">@q.Text</span>
+                                    @if (!string.IsNullOrEmpty(q.TopicId))
+                                    {
+                                        var qTopic = session?.Topics.FirstOrDefault(t => t.Id == q.TopicId);
+                                        @if (qTopic is not null)
+                                        {
+                                            <span class="question-topic-badge">@qTopic.Title</span>
+                                        }
+                                    }
+                                </div>
+                                @if (q.Answers.Count > 0)
+                                {
+                                    @foreach (var answer in q.Answers)
+                                    {
+                                        <div class="question-answer @(answer.IsAiGenerated ? "ai-answer" : "")">
+                                            @if (answer.IsAiGenerated)
+                                            {
+                                                <span class="ai-badge">🤖 AI</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="human-badge">💬 @answer.AuthorLabel</span>
+                                            }
+                                            <strong>A:</strong> @answer.Text
+                                        </div>
+                                    }
+                                }
+                                @if (answeringQuestionId == q.Id)
+                                {
+                                    <div class="answer-form">
+                                        <input type="text" @bind="answerText" placeholder="Type your answer..." />
+                                        <button class="btn btn-sm btn-primary" @onclick="() => SubmitAnswer(q.Id)">Submit</button>
+                                        <button class="btn btn-sm" @onclick="CancelAnswer">Cancel</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-answer" @onclick="() => StartAnswering(q.Id)">💬 Add Answer</button>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @if (activePoll is not null && activePoll.Status != PollStatus.Closed)
+                {
+                    <div class="right-poll-section">
+                        <h3>📊 Live Poll</h3>
+                        <h4>@activePoll.Question</h4>
+                        <div class="poll-options-display">
+                            @foreach (var option in activePoll.Options)
+                            {
+                                var count = activePollResults?.GetValueOrDefault(option, 0) ?? 0;
+                                var total = activePollResults?.Values.Sum() ?? 0;
+                                var pct = total > 0 ? (int)(100.0 * count / total) : 0;
+                                <div class="poll-option-bar">
+                                    <div class="poll-option-fill" style="width: @(pct)%"></div>
+                                    <span class="poll-option-label">@option</span>
+                                    <span class="poll-option-count">@count (@(pct)%)</span>
+                                </div>
+                            }
+                        </div>
+                        @if (activePoll.Status == PollStatus.Draft)
+                        {
+                            <button class="btn btn-primary btn-sm" @onclick="() => ActivatePollAsync(activePoll.Id)">📡 Go Live</button>
+                        }
+                        else if (activePoll.Status == PollStatus.Active)
+                        {
+                            <button class="btn btn-danger btn-sm" @onclick="() => ClosePollAsync(activePoll.Id)">🔒 Close Poll</button>
+                        }
+                    </div>
+                }
+
+                @if (closedPoll is not null)
+                {
+                    <div class="closed-poll-results">
+                        <h4>Last Poll Results: @closedPoll.Question</h4>
+                        <PollResultsChart Poll="@closedPoll" Results="@closedPollResults" />
+                    </div>
+                }
+
+                <div class="insights-section">
+                    <h3>💡 Insights</h3>
+                    @if (activeTopic is not null)
+                    {
+                        <button class="btn btn-sm btn-insight" @onclick="GenerateInsightsManually" disabled="@isGeneratingInsights">
+                            @if (isGeneratingInsights)
+                            {
+                                <span>⏳ Generating...</span>
+                            }
+                            else
+                            {
+                                <span>🔄 Generate Insights</span>
+                            }
+                        </button>
+                    }
+                    @if (topicInsights.Count == 0)
+                    {
+                        <p class="muted">No insights yet for this topic.</p>
+                    }
+                    else
+                    {
+                        @foreach (var insight in topicInsights)
+                        {
+                            <InsightCard Insight="@insight" />
+                        }
+                    }
+                </div>
             </div>
         </div>
     }
@@ -495,8 +449,8 @@
     // Insight generation
     private bool isGeneratingInsights;
 
-    // Tab state for tools zone
-    private string activeTab = "slides";
+    // Import section collapse state
+    private bool isImportExpanded;
 
     // Import tab state
     private string importRepoUrl = "";
@@ -701,6 +655,12 @@
         RefreshState();
     }
 
+    private void JumpToTopic(string topicId)
+    {
+        sessionContext?.ActivateTopic(topicId);
+        RefreshState();
+    }
+
     // Poll actions
 
     private async Task AutoGeneratePoll()
@@ -830,8 +790,6 @@
     }
 
     // Slide navigation
-
-    private void SetActiveTab(string tab) { activeTab = tab; }
 
     private void AdvanceSlideAsync()
     {
@@ -983,68 +941,672 @@
 }
 
 <style>
-    .question-answer.ai-answer {
+    /* Dashboard 3-column grid */
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: 220px 1fr 320px;
+        gap: 1rem;
+        height: calc(100vh - 120px);
+        overflow: hidden;
+    }
+
+    .left-column,
+    .center-column,
+    .right-column {
+        overflow-y: auto;
+        height: 100%;
+    }
+
+    /* ===== Left Column: Topic Outline ===== */
+    .left-column {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .topic-outline {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+    }
+
+    .topic-outline h3 {
+        font-size: 0.85rem;
+        margin: 0 0 0.5rem;
+        opacity: 0.7;
+    }
+
+    .topic-item {
+        display: flex;
+        flex-direction: column;
+        padding: 0.45rem 0.6rem;
+        border-left: 3px solid transparent;
+        border-radius: 0 0.3rem 0.3rem 0;
+        cursor: pointer;
+        margin-bottom: 0.15rem;
+        transition: all 0.15s;
+    }
+
+    .topic-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .topic-item.current {
+        border-left-color: #e94560;
+        background: rgba(233, 69, 96, 0.08);
+    }
+
+    .topic-item.current .topic-item-title {
+        color: rgba(255, 255, 255, 0.95);
+        font-weight: 600;
+    }
+
+    .topic-item.completed {
+        opacity: 0.5;
+    }
+
+    .topic-item.completed .topic-item-title {
+        text-decoration: line-through;
+    }
+
+    .topic-item-title {
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .topic-check {
+        color: #4ecdc4;
+        margin-right: 0.25rem;
+        font-weight: 700;
+    }
+
+    .topic-slide-count {
+        font-size: 0.65rem;
+        opacity: 0.45;
+        margin-top: 0.1rem;
+    }
+
+    /* ===== Import Section ===== */
+    .import-section {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+
+    .import-toggle {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: none;
+        border: none;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 0.8rem;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .import-toggle:hover {
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .import-content {
+        padding: 0 0.75rem 0.75rem;
+    }
+
+    .import-description {
+        font-size: 0.75rem;
+        opacity: 0.6;
+        margin-bottom: 0.5rem;
+    }
+
+    .import-form {
+        display: flex;
+        gap: 0.4rem;
+        margin-bottom: 0.4rem;
+    }
+
+    .import-url-input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.4rem 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.4rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        font-size: 0.75rem;
+        box-sizing: border-box;
+    }
+
+    .import-url-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .import-url-input:focus {
+        outline: none;
+        border-color: #e94560;
+    }
+
+    .import-options-row {
+        display: flex;
+        gap: 0.4rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .import-option {
+        flex: 1;
+    }
+
+    .import-option label {
+        display: block;
+        font-size: 0.65rem;
+        opacity: 0.6;
+        margin-bottom: 0.15rem;
+    }
+
+    .import-option .hint {
+        font-weight: 400;
+        opacity: 0.5;
+    }
+
+    .import-option-input {
+        width: 100%;
+        padding: 0.3rem 0.4rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.35rem;
+        background: rgba(0, 0, 0, 0.2);
+        color: white;
+        font-size: 0.75rem;
+        box-sizing: border-box;
+    }
+
+    .import-option-input::placeholder {
+        color: rgba(255, 255, 255, 0.25);
+    }
+
+    .import-option-input:focus {
+        outline: none;
+        border-color: #e94560;
+    }
+
+    .import-error {
+        padding: 0.4rem 0.6rem;
+        background: rgba(255, 107, 107, 0.15);
+        border: 1px solid rgba(255, 107, 107, 0.3);
+        border-radius: 0.4rem;
+        color: #ff6b6b;
+        font-size: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .import-status {
+        padding: 0.4rem 0.6rem;
         background: rgba(100, 100, 255, 0.1);
-        border-left: 3px solid rgba(100, 100, 255, 0.5);
+        border: 1px solid rgba(100, 100, 255, 0.2);
+        border-radius: 0.4rem;
+        font-size: 0.75rem;
+        color: #aab0ff;
+        margin: 0.4rem 0;
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .import-success {
+        padding: 0.4rem 0.6rem;
+        background: rgba(0, 200, 100, 0.1);
+        border: 1px solid rgba(0, 200, 100, 0.2);
+        border-radius: 0.4rem;
+        font-size: 0.75rem;
+        color: #66d9a0;
+        margin: 0.4rem 0;
+    }
+
+    .import-dedup-warning {
+        padding: 0.35rem 0.5rem;
+        background: rgba(255, 179, 71, 0.1);
+        border: 1px solid rgba(255, 179, 71, 0.2);
+        border-radius: 0.4rem;
+        font-size: 0.75rem;
+        color: #ffb347;
+        margin: 0.3rem 0;
+    }
+
+    .import-history {
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .import-history h4 {
+        font-size: 0.75rem;
+        margin: 0 0 0.3rem;
+        opacity: 0.8;
+    }
+
+    .import-entry {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        padding: 0.3rem 0.4rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 0.3rem;
+        margin-bottom: 0.2rem;
+        font-size: 0.7rem;
+    }
+
+    .import-url {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        opacity: 0.7;
+    }
+
+    .import-count, .import-topics {
+        white-space: nowrap;
+        font-size: 0.65rem;
+        opacity: 0.6;
+    }
+
+    .import-draft-actions {
+        margin-top: 0.5rem;
         padding: 0.5rem;
+        background: rgba(233, 69, 96, 0.05);
+        border: 1px solid rgba(233, 69, 96, 0.15);
+        border-radius: 0.4rem;
+    }
+
+    .import-draft-actions h4 {
+        font-size: 0.8rem;
+        margin: 0 0 0.2rem;
+    }
+
+    .draft-topic-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.25rem 0.4rem;
+        background: rgba(255, 255, 255, 0.03);
         border-radius: 0.25rem;
-        margin-top: 0.25rem;
+        margin-bottom: 0.2rem;
+        font-size: 0.75rem;
+    }
+
+    .tp-count {
+        font-size: 0.65rem;
+        opacity: 0.5;
+    }
+
+    .btn-inline {
+        background: none;
+        border: 1px solid currentColor;
+        color: inherit;
+        padding: 0.12rem 0.4rem;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        font-size: 0.7rem;
+        margin-left: 0.3rem;
+    }
+
+    .btn-inline:hover {
+        opacity: 0.8;
+    }
+
+    /* ===== Center Column: Slides ===== */
+    .center-column {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .center-column:focus {
+        outline: 1px solid rgba(233, 69, 96, 0.3);
+    }
+
+    .center-slide-area {
+        flex: 1;
+        min-height: 200px;
+        overflow: hidden;
+    }
+
+    .up-next-preview {
+        opacity: 0.5;
+        max-height: 120px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 0.4rem;
+        padding: 0.4rem;
+        position: relative;
+    }
+
+    .up-next-label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.7;
+        position: absolute;
+        top: 0.25rem;
+        left: 0.4rem;
+        z-index: 1;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.2rem;
+    }
+
+    .center-notes {
+        background: rgba(255, 200, 0, 0.05);
+        border: 1px solid rgba(255, 200, 0, 0.15);
+        border-radius: 0.4rem;
+        padding: 0.5rem 0.6rem;
+        font-size: 0.8rem;
+        max-height: 100px;
+        overflow-y: auto;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .center-nav {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 0.4rem 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .slide-progress {
+        font-size: 0.8rem;
+        opacity: 0.6;
+    }
+
+    .no-active-slide {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        min-height: 200px;
+        opacity: 0.5;
+        text-align: center;
+    }
+
+    /* ===== Poll Launch Zone (center bottom) ===== */
+    .poll-launch-zone {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: flex-start;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .suggested-poll-picker {
+        display: flex;
+        gap: 0.3rem;
+        flex: 1;
+        min-width: 180px;
+    }
+
+    .suggested-poll-picker select {
+        flex: 1;
+        font-size: 0.75rem;
+        padding: 0.3rem;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: white;
+        border-radius: 0.3rem;
+    }
+
+    .custom-poll-inputs {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin-top: 0.3rem;
+    }
+
+    .custom-poll-inputs input[type="text"] {
+        width: 100%;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.35rem;
+        background: rgba(0, 0, 0, 0.2);
+        color: white;
+        font-size: 0.8rem;
+        box-sizing: border-box;
+    }
+
+    .option-row {
+        display: flex;
+        gap: 0.3rem;
+        align-items: center;
+    }
+
+    .option-row input {
+        flex: 1;
+    }
+
+    .custom-poll-actions {
+        display: flex;
+        gap: 0.3rem;
+        justify-content: flex-end;
+    }
+
+    /* ===== Right Column: Q&A + Polls + Insights ===== */
+    .right-column {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .qa-feed {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        flex: 1;
+        overflow-y: auto;
+        min-height: 150px;
+    }
+
+    .qa-feed h3 {
+        font-size: 0.85rem;
+        margin: 0 0 0.5rem;
+    }
+
+    .qa-count {
+        font-size: 0.7rem;
+        opacity: 0.5;
+        font-weight: 400;
+    }
+
+    .question-item {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 0.8rem;
+    }
+
+    .question-item:last-child {
+        border-bottom: none;
+    }
+
+    .question-header {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+    }
+
+    .upvote-count {
+        font-size: 0.75rem;
+        white-space: nowrap;
+        opacity: 0.7;
+    }
+
+    .question-text {
+        flex: 1;
     }
 
     .question-topic-badge {
         display: inline-block;
-        font-size: 0.65rem;
-        padding: 0.1rem 0.4rem;
+        font-size: 0.6rem;
+        padding: 0.08rem 0.35rem;
         background: rgba(233, 69, 96, 0.15);
         border: 1px solid rgba(233, 69, 96, 0.25);
         border-radius: 0.75rem;
         color: rgba(255, 255, 255, 0.6);
-        margin-left: 0.5rem;
         white-space: nowrap;
+    }
+
+    .question-answer {
+        margin-top: 0.3rem;
+        padding: 0.3rem 0.4rem;
+        font-size: 0.75rem;
+        border-radius: 0.25rem;
+    }
+
+    .question-answer.ai-answer {
+        background: rgba(100, 100, 255, 0.1);
+        border-left: 3px solid rgba(100, 100, 255, 0.5);
     }
 
     .ai-badge {
         display: inline-block;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         font-weight: 600;
         background: rgba(100, 100, 255, 0.2);
         color: #aab0ff;
-        padding: 0.1rem 0.4rem;
-        border-radius: 0.25rem;
-        margin-right: 0.4rem;
-    }
-
-    .btn-override {
-        font-size: 0.75rem;
-        margin-top: 0.25rem;
-        opacity: 0.6;
-        border: 1px dashed rgba(255, 255, 255, 0.2);
-        background: none;
-        color: white;
-        padding: 0.2rem 0.5rem;
-        border-radius: 0.25rem;
-        cursor: pointer;
-    }
-
-    .btn-override:hover {
-        opacity: 1;
-        border-color: #e94560;
+        padding: 0.08rem 0.35rem;
+        border-radius: 0.2rem;
+        margin-right: 0.3rem;
     }
 
     .human-badge {
         display: inline-block;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         font-weight: 600;
         background: rgba(78, 205, 196, 0.2);
         color: #4ecdc4;
-        padding: 0.1rem 0.4rem;
-        border-radius: 0.25rem;
-        margin-right: 0.4rem;
+        padding: 0.08rem 0.35rem;
+        border-radius: 0.2rem;
+        margin-right: 0.3rem;
+    }
+
+    .answer-form {
+        display: flex;
+        gap: 0.3rem;
+        margin-top: 0.3rem;
+    }
+
+    .answer-form input {
+        flex: 1;
+        padding: 0.3rem 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.3rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        font-size: 0.75rem;
+    }
+
+    .btn-answer {
+        opacity: 0.6;
+        font-size: 0.7rem;
+    }
+
+    .btn-answer:hover {
+        opacity: 1;
+    }
+
+    /* ===== Right Poll Section ===== */
+    .right-poll-section {
+        background: rgba(233, 69, 96, 0.05);
+        border: 1px solid rgba(233, 69, 96, 0.15);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+    }
+
+    .right-poll-section h3 {
+        font-size: 0.85rem;
+        margin: 0 0 0.3rem;
+        color: #e94560;
+    }
+
+    .right-poll-section h4 {
+        font-size: 0.8rem;
+        margin: 0 0 0.5rem;
+        opacity: 0.9;
+    }
+
+    .poll-options-display {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .poll-option-bar {
+        position: relative;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 0.3rem;
+        padding: 0.35rem 0.5rem;
+        overflow: hidden;
+    }
+
+    .poll-option-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        background: rgba(233, 69, 96, 0.25);
+        border-radius: 0.3rem;
+        transition: width 0.3s;
+    }
+
+    .poll-option-label {
+        position: relative;
+        font-size: 0.75rem;
+        z-index: 1;
+    }
+
+    .poll-option-count {
+        position: relative;
+        float: right;
+        font-size: 0.7rem;
+        opacity: 0.7;
+        z-index: 1;
+    }
+
+    .closed-poll-results {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+    }
+
+    .closed-poll-results h4 {
+        font-size: 0.8rem;
+        margin: 0 0 0.5rem;
+        opacity: 0.7;
+    }
+
+    /* ===== Insights Section ===== */
+    .insights-section {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+    }
+
+    .insights-section h3 {
+        font-size: 0.85rem;
+        margin: 0 0 0.5rem;
     }
 
     .btn-insight {
         font-size: 0.8rem;
-        margin-bottom: 0.75rem;
+        margin-bottom: 0.5rem;
         border: 1px solid rgba(255, 200, 0, 0.4);
         background: rgba(255, 200, 0, 0.1);
         color: #ffc800;
@@ -1063,7 +1625,7 @@
         cursor: not-allowed;
     }
 
-    /* PIN gate */
+    /* ===== PIN Gate ===== */
     .pin-gate {
         display: flex;
         flex-direction: column;
@@ -1113,208 +1675,22 @@
         font-size: 0.9rem;
     }
 
-    .import-tab {
-        padding: 0.5rem;
-    }
-
-    .import-tab h3 {
-        font-size: 1rem;
-        margin: 0 0 0.25rem;
-    }
-
-    .import-description {
-        font-size: 0.8rem;
-        opacity: 0.6;
-        margin-bottom: 0.75rem;
-    }
-
-    .import-form {
-        display: flex;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .import-options-row {
-        display: flex;
-        gap: 0.5rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .import-option {
-        flex: 1;
-    }
-
-    .import-option label {
-        display: block;
-        font-size: 0.7rem;
-        opacity: 0.6;
-        margin-bottom: 0.2rem;
-    }
-
-    .import-option .hint {
-        font-weight: 400;
-        opacity: 0.5;
-    }
-
-    .import-option-input {
-        width: 100%;
-        padding: 0.35rem 0.5rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 0.4rem;
-        background: rgba(0, 0, 0, 0.2);
-        color: white;
-        font-size: 0.8rem;
-        box-sizing: border-box;
-    }
-
-    .import-option-input::placeholder {
-        color: rgba(255, 255, 255, 0.25);
-    }
-
-    .import-option-input:focus {
-        outline: none;
-        border-color: #e94560;
-    }
-
-    .import-url-input {
-        flex: 1;
-        padding: 0.5rem 0.75rem;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 0.5rem;
-        background: rgba(0, 0, 0, 0.3);
-        color: white;
-        font-size: 0.85rem;
-    }
-
-    .import-url-input::placeholder {
-        color: rgba(255, 255, 255, 0.3);
-    }
-
-    .import-url-input:focus {
-        outline: none;
-        border-color: #e94560;
-    }
-
-    .import-error {
-        padding: 0.5rem 0.75rem;
-        background: rgba(255, 107, 107, 0.15);
-        border: 1px solid rgba(255, 107, 107, 0.3);
-        border-radius: 0.5rem;
-        color: #ff6b6b;
-        font-size: 0.8rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .import-history {
-        margin-top: 1rem;
-        padding-top: 0.75rem;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .import-history h4 {
-        font-size: 0.85rem;
-        margin: 0 0 0.5rem;
-        opacity: 0.8;
-    }
-
-    .import-entry {
-        display: flex;
-        gap: 0.75rem;
-        align-items: center;
-        padding: 0.4rem 0.6rem;
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 0.4rem;
-        margin-bottom: 0.3rem;
-        font-size: 0.8rem;
-    }
-
-    .import-url {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        opacity: 0.7;
-    }
-
-    .import-count, .import-topics {
-        white-space: nowrap;
+    /* ===== Utility ===== */
+    .btn-override {
         font-size: 0.75rem;
+        margin-top: 0.25rem;
         opacity: 0.6;
-    }
-
-    .import-draft-actions {
-        margin-top: 1rem;
-        padding: 0.75rem;
-        background: rgba(233, 69, 96, 0.05);
-        border: 1px solid rgba(233, 69, 96, 0.15);
-        border-radius: 0.5rem;
-    }
-
-    .import-draft-actions h4 {
-        font-size: 0.85rem;
-        margin: 0 0 0.25rem;
-    }
-
-    .draft-topic-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.3rem 0.5rem;
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 0.3rem;
-        margin-bottom: 0.25rem;
-        font-size: 0.8rem;
-    }
-
-    .tp-count {
-        font-size: 0.7rem;
-        opacity: 0.5;
-    }
-
-    .import-status {
-        padding: 0.5rem 0.75rem;
-        background: rgba(100, 100, 255, 0.1);
-        border: 1px solid rgba(100, 100, 255, 0.2);
-        border-radius: 0.5rem;
-        font-size: 0.85rem;
-        color: #aab0ff;
-        margin: 0.5rem 0;
-        animation: pulse 1.5s ease-in-out infinite;
-    }
-
-    .import-success {
-        padding: 0.5rem 0.75rem;
-        background: rgba(0, 200, 100, 0.1);
-        border: 1px solid rgba(0, 200, 100, 0.2);
-        border-radius: 0.5rem;
-        font-size: 0.85rem;
-        color: #66d9a0;
-        margin: 0.5rem 0;
-    }
-
-    .import-dedup-warning {
-        padding: 0.4rem 0.6rem;
-        background: rgba(255, 179, 71, 0.1);
-        border: 1px solid rgba(255, 179, 71, 0.2);
-        border-radius: 0.5rem;
-        font-size: 0.8rem;
-        color: #ffb347;
-        margin: 0.4rem 0;
-    }
-
-    .btn-inline {
+        border: 1px dashed rgba(255, 255, 255, 0.2);
         background: none;
-        border: 1px solid currentColor;
-        color: inherit;
-        padding: 0.15rem 0.5rem;
-        border-radius: 0.3rem;
+        color: white;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.25rem;
         cursor: pointer;
-        font-size: 0.75rem;
-        margin-left: 0.4rem;
     }
 
-    .btn-inline:hover {
-        opacity: 0.8;
+    .btn-override:hover {
+        opacity: 1;
+        border-color: #e94560;
     }
 
     @@keyframes pulse {

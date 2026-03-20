@@ -123,6 +123,7 @@ public class SessionContext
         if (newIndex >= AllSlides.Count) return;
         _activeSlideIndex = newIndex;
         SlideChanged?.Invoke(AllSlides[_activeSlideIndex]);
+        SyncTopicToSlide();
     }
 
     public void GoBackSlide()
@@ -132,6 +133,7 @@ public class SessionContext
         if (newIndex < 0) return;
         _activeSlideIndex = newIndex;
         SlideChanged?.Invoke(AllSlides[_activeSlideIndex]);
+        SyncTopicToSlide();
     }
 
     public void GoToSlide(string slideId)
@@ -140,6 +142,15 @@ public class SessionContext
         if (index < 0) return;
         _activeSlideIndex = index;
         SlideChanged?.Invoke(AllSlides[_activeSlideIndex]);
+        SyncTopicToSlide();
+    }
+
+    public void GoToSlideIndex(int index)
+    {
+        if (index < 0 || index >= AllSlides.Count) return;
+        _activeSlideIndex = index;
+        SlideChanged?.Invoke(AllSlides[_activeSlideIndex]);
+        SyncTopicToSlide();
     }
 
     public Slide? GetNextSlide()
@@ -291,4 +302,31 @@ public class SessionContext
 
     public IReadOnlyList<Insight> GetAllInsights()
         => _insights.ToList();
+
+    private void SyncTopicToSlide()
+    {
+        var slide = ActiveSlide;
+        if (slide is null || string.IsNullOrEmpty(slide.TopicId)) return;
+
+        var currentActiveTopicId = Session.ActiveTopicId;
+        if (slide.TopicId == currentActiveTopicId) return;
+
+        // Find the topic for this slide
+        var topic = Session.Topics.FirstOrDefault(t => t.Id == slide.TopicId);
+        if (topic is null) return;
+
+        lock (_lock)
+        {
+            // Mark previous active topic as completed (if any)
+            var previousActive = Session.Topics.FirstOrDefault(t => t.Status == TopicStatus.Active);
+            if (previousActive is not null && previousActive.Id != topic.Id)
+                previousActive.Status = TopicStatus.Completed;
+
+            // Activate the new topic
+            topic.Status = TopicStatus.Active;
+            Session.ActiveTopicId = topic.Id;
+        }
+
+        TopicActivated?.Invoke(topic.Id);
+    }
 }
