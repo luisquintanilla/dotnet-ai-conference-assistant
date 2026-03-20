@@ -15,7 +15,7 @@ public record GitHubRepoOptions(
     string Owner,
     string Repo,
     string? Subdirectory = null,
-    string? Branch = "main");
+    string? Branch = null);
 
 /// <summary>
 /// An <see cref="IngestionDocumentReader"/> that fetches markdown files from a public GitHub repository
@@ -31,7 +31,7 @@ public class GitHubRepoReader : IngestionDocumentReader
     private readonly string _owner;
     private readonly string _repo;
     private readonly string? _subdirectory;
-    private readonly string _branch;
+    private string? _branch;
     private readonly ILogger<GitHubRepoReader>? _logger;
 
     /// <summary>
@@ -48,7 +48,7 @@ public class GitHubRepoReader : IngestionDocumentReader
         string owner,
         string repo,
         string? subdirectory = null,
-        string? branch = "main",
+        string? branch = null,
         ILogger<GitHubRepoReader>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -59,7 +59,7 @@ public class GitHubRepoReader : IngestionDocumentReader
         _owner = owner;
         _repo = repo;
         _subdirectory = subdirectory?.TrimEnd('/');
-        _branch = branch ?? "main";
+        _branch = branch;
         _logger = logger;
 
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
@@ -147,6 +147,13 @@ public class GitHubRepoReader : IngestionDocumentReader
     /// </summary>
     private async Task<IReadOnlyList<string>> GetMarkdownFilePathsAsync(CancellationToken cancellationToken)
     {
+        // Auto-detect default branch if not explicitly provided
+        if (string.IsNullOrEmpty(_branch))
+        {
+            _branch = await ResolveDefaultBranchAsync(cancellationToken).ConfigureAwait(false);
+            _logger?.LogInformation("Auto-detected default branch: {Branch} for {Owner}/{Repo}", _branch, _owner, _repo);
+        }
+
         var url = $"{GitHubApiBase}/repos/{_owner}/{_repo}/git/trees/{_branch}?recursive=1";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -193,6 +200,34 @@ public class GitHubRepoReader : IngestionDocumentReader
         }
 
         return paths;
+    }
+
+    /// <summary>
+    /// Resolves the repository's default branch by querying the GitHub API.
+    /// Falls back to "main" if the API call fails.
+    /// </summary>
+    private async Task<string> ResolveDefaultBranchAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var url = $"{GitHubApiBase}/repos/{_owner}/{_repo}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.UserAgent.ParseAdd(UserAgent);
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var repoInfo = await response.Content.ReadFromJsonAsync<GitHubRepoResponse>(
+                JsonOptions, cancellationToken).ConfigureAwait(false);
+
+            return repoInfo?.DefaultBranch ?? "main";
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to detect default branch for {Owner}/{Repo}, falling back to 'main'", _owner, _repo);
+            return "main";
+        }
     }
 
     /// <summary>
@@ -253,6 +288,12 @@ public class GitHubRepoReader : IngestionDocumentReader
 
         [JsonPropertyName("truncated")]
         public bool Truncated { get; set; }
+    }
+
+    private sealed class GitHubRepoResponse
+    {
+        [JsonPropertyName("default_branch")]
+        public string? DefaultBranch { get; set; }
     }
 
     private sealed class GitHubTreeItem

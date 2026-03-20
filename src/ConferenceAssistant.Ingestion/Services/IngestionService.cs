@@ -183,7 +183,7 @@ public class IngestionService : IIngestionService
     }
 
     public async Task<GitHubImportResult> IngestGitHubRepoAsync(
-        string owner, string repo, string? subdirectory = null, string? branch = "main")
+        string owner, string repo, string? subdirectory = null, string? branch = null)
     {
         using var httpClient = new HttpClient();
         var reader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,

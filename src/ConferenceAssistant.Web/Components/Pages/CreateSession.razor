@@ -56,7 +56,18 @@
             <div class="github-import-section">
                 <div class="form-group">
                     <label>GitHub Repository URL *</label>
-                    <input type="text" @bind="repoUrl" placeholder="https://github.com/owner/repo" class="form-input" />
+                    <input type="text" @bind="repoUrl" placeholder="https://github.com/owner/repo or .../tree/branch/subdir" class="form-input" />
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group form-group-half">
+                        <label>Branch <span class="hint">(auto-detected if blank)</span></label>
+                        <input type="text" @bind="repoBranch" placeholder="e.g., main, master, develop" class="form-input" />
+                    </div>
+                    <div class="form-group form-group-half">
+                        <label>Subdirectory <span class="hint">(optional)</span></label>
+                        <input type="text" @bind="repoSubdirectory" placeholder="e.g., scenarios" class="form-input" />
+                    </div>
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(importStatus))
@@ -159,6 +170,8 @@
 
     // GitHub import state
     private string repoUrl = "";
+    private string repoBranch = "";
+    private string repoSubdirectory = "";
     private int importStep = 0;
     private bool isImporting;
     private string? importError;
@@ -313,7 +326,9 @@
             StateHasChanged();
 
             importResult = await ContentImportService.ImportAndDraftAsync(url,
-                string.IsNullOrWhiteSpace(title) ? null : title);
+                string.IsNullOrWhiteSpace(title) ? null : title,
+                string.IsNullOrWhiteSpace(repoBranch) ? null : repoBranch.Trim(),
+                string.IsNullOrWhiteSpace(repoSubdirectory) ? null : repoSubdirectory.Trim());
             importStep = 1;
             importedUrls.Add(url);
 
@@ -491,6 +506,15 @@
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 0.75rem;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .form-group-half {
+        flex: 1;
     }
 
     .import-preview {

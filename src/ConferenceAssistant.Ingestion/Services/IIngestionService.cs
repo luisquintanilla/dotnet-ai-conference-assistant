@@ -10,5 +10,5 @@ public interface IIngestionService
     Task<int> IngestExternalContentAsync(string source, string content);
     Task<int> IngestQuestionAsync(string questionId, string questionText, string? topicId = null);
     Task<int> IngestSessionSummaryAsync(string summaryContent);
-    Task<GitHubImportResult> IngestGitHubRepoAsync(string owner, string repo, string? subdirectory = null, string? branch = "main");
+    Task<GitHubImportResult> IngestGitHubRepoAsync(string owner, string repo, string? subdirectory = null, string? branch = null);
 }

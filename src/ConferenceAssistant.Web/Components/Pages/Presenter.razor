@@ -366,7 +366,7 @@
                             }
 
                             <div class="import-form">
-                                <input type="text" @bind="importRepoUrl" placeholder="https://github.com/owner/repo" class="import-url-input" />
+                                <input type="text" @bind="importRepoUrl" placeholder="https://github.com/owner/repo or .../tree/branch/subdir" class="import-url-input" />
                                 <button class="btn btn-primary" @onclick="ImportRepo" disabled="@isImportingRepo">
                                     @if (isImportingRepo)
                                     {
@@ -377,6 +377,17 @@
                                         <span>📥 Import Repository</span>
                                     }
                                 </button>
+                            </div>
+
+                            <div class="import-options-row">
+                                <div class="import-option">
+                                    <label>Branch <span class="hint">(auto-detect)</span></label>
+                                    <input type="text" @bind="importRepoBranch" placeholder="e.g., main" class="import-option-input" />
+                                </div>
+                                <div class="import-option">
+                                    <label>Subdirectory <span class="hint">(optional)</span></label>
+                                    <input type="text" @bind="importRepoSubdir" placeholder="e.g., scenarios" class="import-option-input" />
+                                </div>
                             </div>
 
                             @if (importRepoError is not null)
@@ -490,6 +501,8 @@
 
     // Import tab state
     private string importRepoUrl = "";
+    private string importRepoBranch = "";
+    private string importRepoSubdir = "";
     private bool isImportingRepo;
     private string? importRepoError;
     private string importRepoStatus = "";
@@ -890,7 +903,9 @@
             StateHasChanged();
 
             lastImportDraft = await ContentImportService.ImportAndDraftAsync(
-                url, session?.Title);
+                url, session?.Title,
+                string.IsNullOrWhiteSpace(importRepoBranch) ? null : importRepoBranch.Trim(),
+                string.IsNullOrWhiteSpace(importRepoSubdir) ? null : importRepoSubdir.Trim());
 
             importHistory.Add(new ImportHistoryEntry(
                 url,
@@ -1083,7 +1098,49 @@
     .import-form {
         display: flex;
         gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .import-options-row {
+        display: flex;
+        gap: 0.5rem;
         margin-bottom: 0.75rem;
+    }
+
+    .import-option {
+        flex: 1;
+    }
+
+    .import-option label {
+        display: block;
+        font-size: 0.7rem;
+        opacity: 0.6;
+        margin-bottom: 0.2rem;
+    }
+
+    .import-option .hint {
+        font-weight: 400;
+        opacity: 0.5;
+    }
+
+    .import-option-input {
+        width: 100%;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.4rem;
+        background: rgba(0, 0, 0, 0.2);
+        color: white;
+        font-size: 0.8rem;
+        box-sizing: border-box;
+    }
+
+    .import-option-input::placeholder {
+        color: rgba(255, 255, 255, 0.25);
+    }
+
+    .import-option-input:focus {
+        outline: none;
+        border-color: #e94560;
     }
 
     .import-url-input {
