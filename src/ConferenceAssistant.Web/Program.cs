@@ -47,6 +47,8 @@ openaiBuilder.AddEmbeddingGenerator("embedding");
 // ---------------------------------------------------------------------------
 builder.Services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 builder.Services.AddSingleton<IIngestionService, IngestionService>();
+builder.Services.AddSingleton<ISessionDraftingService, SessionDraftingService>();
+builder.Services.AddSingleton<IContentImportService, ContentImportService>();
 
 // ---------------------------------------------------------------------------
 // Agent Tools + Workflows

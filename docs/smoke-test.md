@@ -684,6 +684,42 @@ Verify the complete data flow through one topic:
 
 ---
 
+## 17. GitHub Repository Import
+
+### Creating a Session from GitHub Content
+
+1. Navigate to the home page (`/`)
+2. Click **"🎯 Create a Session"**
+3. Enter session details (title, code, PIN)
+4. Select **"🐙 Import from GitHub"** template
+5. Enter a GitHub repo URL: `https://github.com/JeremyLikness/dotnet-ai-scenarios`
+6. Click **"🔍 Fetch & Draft Session"**
+7. Wait for import + AI drafting (may take 10-30 seconds)
+8. ✅ Verify: Import stats show document count
+9. ✅ Verify: AI-drafted topics appear with talking points and suggested polls
+10. Optionally remove topics using ✕ button
+11. Click **"🚀 Create Session"**
+12. ✅ Verify: Redirected to presenter page with imported topics
+
+### Importing Content During a Session
+
+1. Open presenter dashboard for an active session
+2. Click the **"📥 Import"** tab
+3. Paste a GitHub repo URL
+4. Click **"📥 Import Repository"**
+5. ✅ Verify: Import completes, history entry appears
+6. ✅ Verify: Knowledge base record count increases
+7. Click **"➕ Add All Topics"** to add drafted topics to the session
+8. ✅ Verify: New topics appear in the Topics panel
+
+### Edge Cases
+
+- **Invalid URL**: Should show error message
+- **Rate limit**: GitHub API allows 60 requests/hour unauthenticated
+- **AI unavailable**: Fallback generates topics grouped by category from front matter
+
+---
+
 ## Quick Checklist
 
 ```
@@ -743,4 +779,14 @@ MCP SERVER
 [ ] POST /mcp tools/call get_session_status → session data
 [ ] POST /mcp tools/call search_session_knowledge → KB results
 [ ] .vscode/mcp.json configured for VS Code Copilot
+
+GITHUB REPOSITORY IMPORT
+[ ] /create — "🐙 Import from GitHub" template available
+[ ] Enter GitHub repo URL → "🔍 Fetch & Draft Session" imports and drafts
+[ ] Import stats show document count
+[ ] AI-drafted topics appear with talking points and polls
+[ ] "🚀 Create Session" → redirected to presenter with imported topics
+[ ] Presenter "📥 Import" tab — paste URL → "📥 Import Repository" works
+[ ] KB record count increases after import
+[ ] "➕ Add All Topics" adds drafted topics to session
 ```

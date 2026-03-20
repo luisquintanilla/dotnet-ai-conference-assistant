@@ -5,8 +5,11 @@
 @using ConferenceAssistant.Ingestion.Services
 @implements IDisposable
 @inject ISessionManager SessionManager
+@using ConferenceAssistant.Web.Services
+@using ConferenceAssistant.Ingestion.Models
 @inject ISemanticSearchService SemanticSearchService
 @inject IInsightGenerationService InsightGenerationService
+@inject IContentImportService ContentImportService
 @rendermode InteractiveServer
 
 <PageTitle>Presenter Dashboard</PageTitle>
@@ -110,6 +113,9 @@
                     </button>
                     <button class="tab-btn @(activeTab == "topic" ? "active" : "")" @onclick='() => SetActiveTab("topic")'>
                         📋 Topic
+                    </button>
+                    <button class="tab-btn @(activeTab == "import" ? "active" : "")" @onclick='() => SetActiveTab("import")'>
+                        📥 Import
                     </button>
                 </div>
 
@@ -335,6 +341,81 @@
                             <p class="muted">Activate a topic to see details.</p>
                         }
                     }
+                    else if (activeTab == "import")
+                    {
+                        <div class="import-tab">
+                            <h3>📥 Import from GitHub</h3>
+                            <p class="import-description">Import content from a GitHub repository to enrich the knowledge base for Q&amp;A.</p>
+
+                            @if (!string.IsNullOrWhiteSpace(importRepoStatus))
+                            {
+                                <div class="import-status">@importRepoStatus</div>
+                            }
+
+                            @if (importRepoSuccess is not null)
+                            {
+                                <div class="import-success">✅ @importRepoSuccess</div>
+                            }
+
+                            @if (showRepoDedupWarning)
+                            {
+                                <div class="import-dedup-warning">⚠️ This repository was already imported. Import again?
+                                    <button class="btn-inline" @onclick="ConfirmRepoReimport">Yes, re-import</button>
+                                    <button class="btn-inline" @onclick="() => showRepoDedupWarning = false">Cancel</button>
+                                </div>
+                            }
+
+                            <div class="import-form">
+                                <input type="text" @bind="importRepoUrl" placeholder="https://github.com/owner/repo" class="import-url-input" />
+                                <button class="btn btn-primary" @onclick="ImportRepo" disabled="@isImportingRepo">
+                                    @if (isImportingRepo)
+                                    {
+                                        <span>⏳ Importing...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>📥 Import Repository</span>
+                                    }
+                                </button>
+                            </div>
+
+                            @if (importRepoError is not null)
+                            {
+                                <div class="import-error">@importRepoError</div>
+                            }
+
+                            @if (importHistory.Count > 0)
+                            {
+                                <div class="import-history">
+                                    <h4>Import History</h4>
+                                    @foreach (var entry in importHistory)
+                                    {
+                                        <div class="import-entry">
+                                            <span class="import-url">@entry.Url</span>
+                                            <span class="import-count">📄 @entry.DocumentCount docs</span>
+                                            <span class="import-topics">🎯 @entry.TopicCount topics drafted</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (lastImportDraft is not null && lastImportDraft.Draft.Topics.Count > 0)
+                            {
+                                <div class="import-draft-actions">
+                                    <h4>Add Drafted Topics to Session?</h4>
+                                    <p class="muted">The AI drafted @lastImportDraft.Draft.Topics.Count topic(s) from the imported content.</p>
+                                    @foreach (var topic in lastImportDraft.Draft.Topics)
+                                    {
+                                        <div class="draft-topic-item">
+                                            <span>@topic.Title</span>
+                                            <span class="tp-count">@topic.TalkingPoints.Count points, @topic.SuggestedPolls.Count polls</span>
+                                        </div>
+                                    }
+                                    <button class="btn btn-primary" @onclick="AddDraftedTopicsToSession">➕ Add All Topics</button>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             </div>
 
@@ -406,6 +487,19 @@
 
     // Tab state for tools zone
     private string activeTab = "slides";
+
+    // Import tab state
+    private string importRepoUrl = "";
+    private bool isImportingRepo;
+    private string? importRepoError;
+    private string importRepoStatus = "";
+    private string? importRepoSuccess;
+    private ImportDraftResult? lastImportDraft;
+    private List<ImportHistoryEntry> importHistory = [];
+    private HashSet<string> importedRepoUrls = [];
+    private bool showRepoDedupWarning;
+
+    private record ImportHistoryEntry(string Url, int DocumentCount, int TopicCount);
 
     // Slide navigation
     private Slide? activeSlide;
@@ -746,6 +840,110 @@
             GoBackSlideAsync();
         }
     }
+
+    // Import actions
+    private async Task ImportRepo()
+    {
+        importRepoError = null;
+        importRepoSuccess = null;
+        showRepoDedupWarning = false;
+
+        if (string.IsNullOrWhiteSpace(importRepoUrl))
+        {
+            importRepoError = "Please enter a GitHub repository URL.";
+            return;
+        }
+
+        var trimmedUrl = importRepoUrl.Trim();
+
+        if (!trimmedUrl.Contains("github.com") || trimmedUrl.Split('/').Length < 5)
+        {
+            importRepoError = "Invalid GitHub URL. Use format: https://github.com/owner/repo";
+            return;
+        }
+
+        if (importedRepoUrls.Contains(trimmedUrl))
+        {
+            showRepoDedupWarning = true;
+            return;
+        }
+
+        await DoImportRepo(trimmedUrl);
+    }
+
+    private async Task ConfirmRepoReimport()
+    {
+        showRepoDedupWarning = false;
+        await DoImportRepo(importRepoUrl.Trim());
+    }
+
+    private async Task DoImportRepo(string url)
+    {
+        isImportingRepo = true;
+        importRepoStatus = "🔍 Connecting to GitHub...";
+        importRepoSuccess = null;
+        StateHasChanged();
+
+        try
+        {
+            importRepoStatus = "🔍 Fetching repository & drafting session...";
+            StateHasChanged();
+
+            lastImportDraft = await ContentImportService.ImportAndDraftAsync(
+                url, session?.Title);
+
+            importHistory.Add(new ImportHistoryEntry(
+                url,
+                lastImportDraft.ImportResult.RecordCount,
+                lastImportDraft.Draft.Topics.Count));
+
+            importedRepoUrls.Add(url);
+            importRepoSuccess = $"Successfully imported {lastImportDraft.ImportResult.RecordCount} documents!";
+            importRepoUrl = "";
+            RefreshKnowledgeBaseCount();
+        }
+        catch (Exception ex)
+        {
+            if (!url.Contains("github.com") || url.Split('/').Length < 5)
+                importRepoError = "Invalid GitHub URL. Use format: https://github.com/owner/repo";
+            else
+                importRepoError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            isImportingRepo = false;
+            importRepoStatus = "";
+            StateHasChanged();
+        }
+    }
+
+    private void AddDraftedTopicsToSession()
+    {
+        if (lastImportDraft is null || sessionContext is null || session is null) return;
+
+        foreach (var topicDraft in lastImportDraft.Draft.Topics)
+        {
+            var topic = new SessionTopic
+            {
+                Id = Guid.NewGuid().ToString("N")[..8],
+                Title = topicDraft.Title,
+                Description = topicDraft.Description,
+                Order = session.Topics.Count,
+                Status = TopicStatus.Upcoming,
+                TalkingPoints = topicDraft.TalkingPoints.ToList(),
+                SuggestedPolls = topicDraft.SuggestedPolls.Select(p => new SuggestedPoll
+                {
+                    Question = p.Question,
+                    Options = p.Options.ToList()
+                }).ToList()
+            };
+            session.Topics.Add(topic);
+        }
+
+        lastImportDraft = null;
+        RefreshState();
+        StateHasChanged();
+    }
 }
 
 <style>
@@ -865,5 +1063,172 @@
         color: #ff6b6b;
         margin-top: 0.75rem;
         font-size: 0.9rem;
+    }
+
+    .import-tab {
+        padding: 0.5rem;
+    }
+
+    .import-tab h3 {
+        font-size: 1rem;
+        margin: 0 0 0.25rem;
+    }
+
+    .import-description {
+        font-size: 0.8rem;
+        opacity: 0.6;
+        margin-bottom: 0.75rem;
+    }
+
+    .import-form {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .import-url-input {
+        flex: 1;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.5rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        font-size: 0.85rem;
+    }
+
+    .import-url-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .import-url-input:focus {
+        outline: none;
+        border-color: #e94560;
+    }
+
+    .import-error {
+        padding: 0.5rem 0.75rem;
+        background: rgba(255, 107, 107, 0.15);
+        border: 1px solid rgba(255, 107, 107, 0.3);
+        border-radius: 0.5rem;
+        color: #ff6b6b;
+        font-size: 0.8rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .import-history {
+        margin-top: 1rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .import-history h4 {
+        font-size: 0.85rem;
+        margin: 0 0 0.5rem;
+        opacity: 0.8;
+    }
+
+    .import-entry {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        padding: 0.4rem 0.6rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 0.4rem;
+        margin-bottom: 0.3rem;
+        font-size: 0.8rem;
+    }
+
+    .import-url {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        opacity: 0.7;
+    }
+
+    .import-count, .import-topics {
+        white-space: nowrap;
+        font-size: 0.75rem;
+        opacity: 0.6;
+    }
+
+    .import-draft-actions {
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: rgba(233, 69, 96, 0.05);
+        border: 1px solid rgba(233, 69, 96, 0.15);
+        border-radius: 0.5rem;
+    }
+
+    .import-draft-actions h4 {
+        font-size: 0.85rem;
+        margin: 0 0 0.25rem;
+    }
+
+    .draft-topic-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.3rem 0.5rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 0.3rem;
+        margin-bottom: 0.25rem;
+        font-size: 0.8rem;
+    }
+
+    .tp-count {
+        font-size: 0.7rem;
+        opacity: 0.5;
+    }
+
+    .import-status {
+        padding: 0.5rem 0.75rem;
+        background: rgba(100, 100, 255, 0.1);
+        border: 1px solid rgba(100, 100, 255, 0.2);
+        border-radius: 0.5rem;
+        font-size: 0.85rem;
+        color: #aab0ff;
+        margin: 0.5rem 0;
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .import-success {
+        padding: 0.5rem 0.75rem;
+        background: rgba(0, 200, 100, 0.1);
+        border: 1px solid rgba(0, 200, 100, 0.2);
+        border-radius: 0.5rem;
+        font-size: 0.85rem;
+        color: #66d9a0;
+        margin: 0.5rem 0;
+    }
+
+    .import-dedup-warning {
+        padding: 0.4rem 0.6rem;
+        background: rgba(255, 179, 71, 0.1);
+        border: 1px solid rgba(255, 179, 71, 0.2);
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        color: #ffb347;
+        margin: 0.4rem 0;
+    }
+
+    .btn-inline {
+        background: none;
+        border: 1px solid currentColor;
+        color: inherit;
+        padding: 0.15rem 0.5rem;
+        border-radius: 0.3rem;
+        cursor: pointer;
+        font-size: 0.75rem;
+        margin-left: 0.4rem;
+    }
+
+    .btn-inline:hover {
+        opacity: 0.8;
+    }
+
+    @@keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
     }
 </style>

@@ -503,6 +503,53 @@ Speaker notes (from `<!-- speaker: ... -->` comments) are **presenter-only**. Th
 
 ---
 
+## GitHub Repository Import Pipeline
+
+The app can ingest content from public GitHub repositories to enrich the knowledge base and auto-generate session structure.
+
+### Pipeline Architecture
+
+```
+GitHub Repo URL
+  │
+  ├─→ ContentImportService (orchestrator)
+  │     ├─→ IIngestionService.IngestGitHubRepoAsync
+  │     │     ├─→ GitHubRepoReader (fetches .md files via GitHub API)
+  │     │     ├─→ MarkdownFrontMatterParser (extracts YAML metadata)
+  │     │     ├─→ FrontMatterEnricher (adds metadata to records)
+  │     │     └─→ VectorStoreWriter (stores in knowledge base)
+  │     │
+  │     └─→ ISessionDraftingService.DraftSessionAsync
+  │           ├─→ IChatClient (AI generates session structure)
+  │           └─→ Fallback: category-grouped topics from front matter
+  │
+  └─→ SessionDraft (topics, talking points, polls)
+        └─→ Presenter reviews → CreateSession
+```
+
+### Key Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `GitHubRepoReader` | Ingestion/Readers/ | Fetches .md files from GitHub repos |
+| `MarkdownFrontMatterParser` | Ingestion/Utilities/ | Parses YAML front matter without external libs |
+| `FrontMatterEnricher` | Ingestion/Enrichers/ | Enriches records with front matter metadata |
+| `SessionDraftingService` | Web/Services/ | AI-powered session structure generation |
+| `ContentImportService` | Web/Services/ | Orchestrates import → draft pipeline |
+
+### Entry Points
+
+1. **Create Session page** (`/create`) — "🐙 Import from GitHub" template option
+2. **Presenter page** (`/presenter/{code}`) — "📥 Import" tab for enriching KB during sessions
+
+### Data Flow
+
+- **Knowledge base enrichment**: Imported markdown → chunked → embedded → vector store → available for Q&A
+- **Session drafting**: AI reads front matter + content → generates topics with talking points and polls
+- **Dual benefit**: One import action enriches both the knowledge base AND the session structure
+
+---
+
 ## Configuration (appsettings.json)
 
 ```json

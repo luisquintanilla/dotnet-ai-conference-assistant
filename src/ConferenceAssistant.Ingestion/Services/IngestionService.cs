@@ -3,7 +3,10 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.Extensions.Logging;
 using Microsoft.ML.Tokenizers;
+using ConferenceAssistant.Ingestion.Enrichers;
 using ConferenceAssistant.Ingestion.Models;
+using ConferenceAssistant.Ingestion.Readers;
+using ConferenceAssistant.Ingestion.Utilities;
 
 namespace ConferenceAssistant.Ingestion.Services;
 
@@ -177,6 +180,61 @@ public class IngestionService : IIngestionService
         await _searchService.UpsertAsync(record);
         _logger.LogInformation("Session summary ingested into knowledge base ({Length} chars)", summaryContent.Length);
         return 1;
+    }
+
+    public async Task<GitHubImportResult> IngestGitHubRepoAsync(
+        string owner, string repo, string? subdirectory = null, string? branch = "main")
+    {
+        using var httpClient = new HttpClient();
+        var reader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,
+            _loggerFactory.CreateLogger<GitHubRepoReader>());
+
+        var documents = new List<ImportedDocument>();
+        var errors = new List<string>();
+        int count = 0;
+        var source = $"github:{owner}/{repo}";
+
+        await foreach (var ingestionDoc in reader.ReadAllAsync())
+        {
+            try
+            {
+                // Extract the raw markdown from the IngestionDocument
+                var rawContent = string.Join("\n", ingestionDoc.Sections
+                    .SelectMany(s => s.Elements)
+                    .OfType<IngestionDocumentParagraph>()
+                    .Select(p => p.Text));
+
+                if (string.IsNullOrWhiteSpace(rawContent)) continue;
+
+                // Parse front matter
+                var parsed = MarkdownFrontMatterParser.Parse(rawContent);
+
+                // Create ConferenceRecord with enriched metadata
+                var record = new ConferenceRecord
+                {
+                    Id = $"github-{owner}-{repo}-{count}",
+                    Source = source,
+                    Content = !string.IsNullOrWhiteSpace(parsed.Body) ? parsed.Body : rawContent
+                };
+
+                FrontMatterEnricher.EnrichRecord(record, parsed.FrontMatter);
+
+                await _searchService.UpsertAsync(record);
+                count++;
+
+                documents.Add(new ImportedDocument(ingestionDoc.Identifier, rawContent, parsed.FrontMatter));
+
+                _logger.LogInformation("Ingested GitHub file: {FilePath} ({Source})", ingestionDoc.Identifier, source);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to ingest GitHub file: {DocId}", ingestionDoc.Identifier);
+                errors.Add($"{ingestionDoc.Identifier}: {ex.Message}");
+            }
+        }
+
+        _logger.LogInformation("GitHub import complete: {Count} records from {Owner}/{Repo}", count, owner, repo);
+        return new GitHubImportResult(count, documents, errors);
     }
 
     /// <summary>
