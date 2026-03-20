@@ -256,6 +256,22 @@
                     };
                     context.Session.Topics.Add(topic);
                 }
+
+                // Parse and load slides from generated markdown, remapping topic IDs
+                if (importResult is not null && !string.IsNullOrWhiteSpace(importResult.SlideMarkdown))
+                {
+                    var slides = SlideMarkdownParser.Parse(importResult.SlideMarkdown);
+                    for (int i = 0; i < importResult.Draft.Topics.Count && i < context.Session.Topics.Count; i++)
+                    {
+                        var draftTopicId = $"topic-{i}";
+                        var actualTopicId = context.Session.Topics[i].Id;
+                        foreach (var slide in slides.Where(s => s.TopicId == draftTopicId))
+                        {
+                            slide.TopicId = actualTopicId;
+                        }
+                    }
+                    context.LoadSlides(slides);
+                }
             }
             else
             {

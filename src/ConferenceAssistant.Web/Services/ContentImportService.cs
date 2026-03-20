@@ -6,6 +6,7 @@ namespace ConferenceAssistant.Web.Services;
 public partial class ContentImportService(
     IIngestionService ingestionService,
     ISessionDraftingService draftingService,
+    ISlideGenerationService slideGenerationService,
     ILogger<ContentImportService> logger) : IContentImportService
 {
     public async Task<ImportDraftResult> ImportAndDraftAsync(
@@ -28,7 +29,20 @@ public partial class ContentImportService(
         logger.LogInformation("AI draft generated: {TopicCount} topics for {Owner}/{Repo}",
             draft.Topics.Count, parsed.Owner, parsed.Repo);
 
-        return new ImportDraftResult(importResult, draft);
+        // Generate slide deck from draft
+        string slideMarkdown;
+        try
+        {
+            slideMarkdown = await slideGenerationService.GenerateEnhancedSlideMarkdownAsync(
+                draft, importResult.Documents);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "AI slide enhancement failed, using programmatic slides");
+            slideMarkdown = slideGenerationService.GenerateSlideMarkdown(draft);
+        }
+
+        return new ImportDraftResult(importResult, draft, slideMarkdown);
     }
 
     private static ParsedRepoUrl ParseRepoUrl(string repoUrl)

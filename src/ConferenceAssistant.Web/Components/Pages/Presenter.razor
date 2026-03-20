@@ -10,6 +10,7 @@
 @inject ISemanticSearchService SemanticSearchService
 @inject IInsightGenerationService InsightGenerationService
 @inject IContentImportService ContentImportService
+@inject ISlideGenerationService SlideGenerationService
 @rendermode InteractiveServer
 
 <PageTitle>Presenter Dashboard</PageTitle>
@@ -953,6 +954,24 @@
                 }).ToList()
             };
             session.Topics.Add(topic);
+        }
+
+        // Generate and load slides for newly added topics, remapping topic IDs
+        if (lastImportDraft is not null && !string.IsNullOrWhiteSpace(lastImportDraft.SlideMarkdown))
+        {
+            var newSlides = SlideMarkdownParser.Parse(lastImportDraft.SlideMarkdown);
+            for (int i = 0; i < lastImportDraft.Draft.Topics.Count && i < session.Topics.Count; i++)
+            {
+                var draftTopicId = $"topic-{i}";
+                var actualTopicId = session.Topics[session.Topics.Count - lastImportDraft.Draft.Topics.Count + i].Id;
+                foreach (var slide in newSlides.Where(s => s.TopicId == draftTopicId))
+                {
+                    slide.TopicId = actualTopicId;
+                }
+            }
+            var allSlides = sessionContext.AllSlides.ToList();
+            allSlides.AddRange(newSlides);
+            sessionContext.LoadSlides(allSlides);
         }
 
         lastImportDraft = null;

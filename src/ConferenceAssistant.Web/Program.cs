@@ -49,6 +49,7 @@ builder.Services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 builder.Services.AddSingleton<IIngestionService, IngestionService>();
 builder.Services.AddSingleton<ISessionDraftingService, SessionDraftingService>();
 builder.Services.AddSingleton<IContentImportService, ContentImportService>();
+builder.Services.AddSingleton<ISlideGenerationService, SlideGenerationService>();
 
 // ---------------------------------------------------------------------------
 // Agent Tools + Workflows

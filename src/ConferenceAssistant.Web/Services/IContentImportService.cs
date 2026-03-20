@@ -10,4 +10,5 @@ public interface IContentImportService
 
 public record ImportDraftResult(
     GitHubImportResult ImportResult,
-    SessionDraft Draft);
+    SessionDraft Draft,
+    string SlideMarkdown);
