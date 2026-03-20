@@ -268,7 +268,7 @@ public class GitHubRepoReader : IngestionDocumentReader
     {
         var document = new IngestionDocument(identifier);
         var section = new IngestionDocumentSection();
-        section.Elements.Add(new IngestionDocumentParagraph(markdownContent));
+        section.Elements.Add(new IngestionDocumentParagraph(markdownContent) { Text = markdownContent });
         document.Sections.Add(section);
         return document;
     }
