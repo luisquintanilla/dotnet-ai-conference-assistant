@@ -28,6 +28,6 @@ public class ConferenceRecord
     [VectorStoreData]
     public DateTimeOffset IngestedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    [VectorStoreVector(1536)]
+    [VectorStoreVector(1536, DistanceFunction = DistanceFunction.CosineDistance, IndexKind = IndexKind.Hnsw)]
     public ReadOnlyMemory<float> Embedding { get; set; }
 }

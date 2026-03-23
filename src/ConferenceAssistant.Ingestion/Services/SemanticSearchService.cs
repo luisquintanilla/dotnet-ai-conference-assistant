@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
-using Microsoft.SemanticKernel.Connectors.InMemory;
+using Microsoft.SemanticKernel.Connectors.PgVector;
+using Npgsql;
 using ConferenceAssistant.Ingestion.Models;
 
 namespace ConferenceAssistant.Ingestion.Services;
@@ -9,16 +10,17 @@ public class SemanticSearchService : ISemanticSearchService
 {
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly VectorStoreCollection<string, ConferenceRecord> _collection;
-    private readonly InMemoryVectorStore _vectorStore;
+    private readonly PostgresVectorStore _vectorStore;
     private int _recordCount;
     private bool _initialized;
 
     public SemanticSearchService(
-        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        NpgsqlDataSource dataSource)
     {
         _embeddingGenerator = embeddingGenerator;
-        _vectorStore = new InMemoryVectorStore();
-        _collection = _vectorStore.GetCollection<string, ConferenceRecord>("conference-knowledge");
+        _vectorStore = new PostgresVectorStore(dataSource, ownsDataSource: false);
+        _collection = _vectorStore.GetCollection<string, ConferenceRecord>("conference_knowledge");
     }
 
     /// <summary>

@@ -47,7 +47,7 @@ public class IngestionService : IIngestionService
         using var writer = new VectorStoreWriter<string>(
             _searchService.VectorStore,
             dimensionCount: 1536,
-            new VectorStoreWriterOptions { CollectionName = "conference-knowledge" });
+            new VectorStoreWriterOptions { CollectionName = "conference_knowledge" });
 
         // 4. Enrichers — AI-powered summary and keyword extraction
         var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };

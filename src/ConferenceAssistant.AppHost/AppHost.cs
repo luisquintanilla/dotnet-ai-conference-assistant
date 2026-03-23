@@ -18,9 +18,20 @@ var openai = builder.AddAzureOpenAI("openai")
 openai.AddDeployment("chat", "gpt-4o", "2024-08-06");
 openai.AddDeployment("embedding", "text-embedding-3-small", "1");
 
+// PostgreSQL with pgvector for persistent storage
+var postgres = builder.AddPostgres("postgres")
+    .WithImage("pgvector/pgvector")
+    .WithImageTag("pg17")
+    .WithPgWeb()
+    .WithDataVolume();
+
+var conferenceDb = postgres.AddDatabase("conferencedb");
+
 var web = builder.AddProject<Projects.ConferenceAssistant_Web>("web")
     .WithReference(openai)
-    .WaitFor(openai);
+    .WithReference(conferenceDb)
+    .WaitFor(openai)
+    .WaitFor(conferenceDb);
 
 // Dev tunnel — exposes the web app via a public HTTPS URL for attendees
 builder.AddDevTunnel("conference-tunnel")

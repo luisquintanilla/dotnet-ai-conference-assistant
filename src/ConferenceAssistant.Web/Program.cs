@@ -1,10 +1,12 @@
 using Microsoft.Extensions.AI;
+using Npgsql;
 using ConferenceAssistant.Core.Services;
 using ConferenceAssistant.Ingestion.Services;
 using ConferenceAssistant.Agents.Tools;
 using ConferenceAssistant.Agents.Workflows;
 using ConferenceAssistant.Mcp.Clients;
 using ConferenceAssistant.Web.Components;
+using ConferenceAssistant.Web.Data;
 using ConferenceAssistant.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,6 +15,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Aspire Service Defaults (OpenTelemetry, health checks, service discovery)
 // ---------------------------------------------------------------------------
 builder.AddServiceDefaults();
+
+// ---------------------------------------------------------------------------
+// PostgreSQL + EF Core — persistent storage via Aspire
+// ---------------------------------------------------------------------------
+builder.AddNpgsqlDbContext<ConferenceDbContext>("conferencedb");
 
 // ---------------------------------------------------------------------------
 // Blazor Interactive Server
@@ -41,6 +48,18 @@ openaiBuilder.AddChatClient("chat")
     .UseLogging();
 
 openaiBuilder.AddEmbeddingGenerator("embedding");
+
+// ---------------------------------------------------------------------------
+// PostgreSQL + pgvector — NpgsqlDataSource with vector support
+// ---------------------------------------------------------------------------
+builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("conferencedb")
+        ?? throw new InvalidOperationException("Missing 'conferencedb' connection string");
+    var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+    dataSourceBuilder.UseVector();
+    return dataSourceBuilder.Build();
+});
 
 // ---------------------------------------------------------------------------
 // Ingestion + VectorData — knowledge base pipeline
@@ -93,6 +112,13 @@ builder.Services.AddSingleton<IMcpContentClient, McpContentClient>();
 // Build app
 // ---------------------------------------------------------------------------
 var app = builder.Build();
+
+// Ensure database schema is created
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ConferenceDbContext>();
+    await db.Database.EnsureCreatedAsync();
+}
 
 if (!app.Environment.IsDevelopment())
 {
