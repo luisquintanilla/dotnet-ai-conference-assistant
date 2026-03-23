@@ -37,6 +37,7 @@
 
   <ItemGroup Label="Aspire">
     <PackageVersion Include="Aspire.Hosting.Azure.CognitiveServices" Version="13.2.0" />
+    <PackageVersion Include="Aspire.Hosting.DevTunnels" Version="13.2.0" />
     <PackageVersion Include="Aspire.Azure.AI.OpenAI" Version="13.2.0-preview.1.26170.3" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.5.0" />

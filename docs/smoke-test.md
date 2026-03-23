@@ -85,6 +85,9 @@ cd C:\Dev\dotnet-ai-conference-assistant
 # Build everything (should be 0 errors, 0 warnings)
 dotnet build
 
+# One-time: log in to dev tunnels
+devtunnel user login
+
 # Launch via Aspire CLI (recommended) or project
 aspire run
 # OR: dotnet run --project src/ConferenceAssistant.AppHost
@@ -94,10 +97,10 @@ aspire run
 
 ```
 info: Aspire.Hosting.DistributedApplication[0]
-      Aspire version: 13.1.2
+      Aspire version: 13.2.0
       Dashboard is running at: http://localhost:18888/login?t=<token>
       ...
-info: ConferenceAssistant.Web
+info: Dev tunnel 'conference-tunnel' is running at: https://<id>.devtunnels.ms/
       Default session created: XXXXXXXX (PIN: 0000)
       Session loaded: The Microsoft AI Stack for .NET
       Ingested 12 outline chunks into knowledge base

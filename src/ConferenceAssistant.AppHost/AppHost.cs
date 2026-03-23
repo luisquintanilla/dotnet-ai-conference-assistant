@@ -22,4 +22,9 @@ var web = builder.AddProject<Projects.ConferenceAssistant_Web>("web")
     .WithReference(openai)
     .WaitFor(openai);
 
+// Dev tunnel — exposes the web app via a public HTTPS URL for attendees
+builder.AddDevTunnel("conference-tunnel")
+    .WithReference(web)
+    .WithAnonymousAccess();
+
 builder.Build().Run();

@@ -328,9 +328,19 @@ Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`,
 
 ### ConferenceAssistant.AppHost
 ```xml
-<PackageReference Include="Aspire.Hosting.AppHost" />
+<PackageReference Include="Aspire.Hosting.Azure.CognitiveServices" />
+<PackageReference Include="Aspire.Hosting.DevTunnels" />
 ```
 Project reference: `ConferenceAssistant.Web` (as Aspire resource)
+
+#### Dev Tunnel
+The AppHost configures a dev tunnel with anonymous access so attendees can reach the web app from their devices:
+```csharp
+builder.AddDevTunnel("conference-tunnel")
+    .WithReference(web)
+    .WithAnonymousAccess();
+```
+The tunnel URL appears in the Aspire dashboard. The Display page's QR code automatically uses the tunnel URL when accessed through it (via `NavigationManager.BaseUri`). Prerequisite: `devtunnel user login` (one-time setup).
 
 ### ConferenceAssistant.ServiceDefaults
 ```xml
