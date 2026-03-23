@@ -60,6 +60,7 @@ builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
         ?? throw new InvalidOperationException("Missing 'conferencedb' connection string");
     var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
     dataSourceBuilder.UseVector();
+    dataSourceBuilder.EnableDynamicJson();
     return dataSourceBuilder.Build();
 });
 
