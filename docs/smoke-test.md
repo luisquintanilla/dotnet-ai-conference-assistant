@@ -1,7 +1,8 @@
 # 🧪 Conference Pulse — Smoke Test & Getting Started Guide
 
-> **Updated for multi-session architecture + Aspire AI integration + real-time ingestion + AI answers + insight generation**
+> **Updated for multi-session architecture + Aspire AI integration + PostgreSQL persistence (pgvector) + real-time ingestion + AI answers + insight generation**
 > All AI configuration flows through Aspire's `AddAzureOpenAI` + `RunAsExisting` + user secrets.
+> PostgreSQL + pgvector container is managed by Aspire (requires Docker).
 
 ---
 
@@ -655,16 +656,20 @@ All session data is persisted to PostgreSQL. Verify data survives app restarts a
 | **Session summary** | ❌ | ✅ |
 | **Outline ingestion** | ❌ | ✅ |
 | **Semantic search** | ⚠️ empty | ✅ |
+| **PostgreSQL persistence** | ✅ | ✅ |
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `Aspire workload not found` | `dotnet workload install aspire` |
 | `Parameter 'AzureOpenAIName' not found` | Set user secrets (see §0) |
 | `openai` resource unhealthy | Check `az login` / resource name / RG in secrets |
+| `postgres` container not starting | Ensure Docker is running; check `docker ps` for port conflicts |
+| pgWeb not loading | Check `postgres-pgweb` resource in Aspire dashboard for errors |
+| `conferencedb` tables missing | App creates schema on startup via `EnsureCreatedAsync`; check web resource logs |
 | Web app port unknown | Get it from Aspire dashboard Resources tab |
 | Outline ingestion skipped | AI not configured — check secrets + Azure login |
 | MCP `initialize` fails | Make sure you POST to `<webUrl>/mcp` with correct JSON-RPC |
@@ -673,13 +678,14 @@ All session data is persisted to PostgreSQL. Verify data survives app restarts a
 | AI answer not appearing | Check structured logs in Aspire dashboard for `QuestionAnsweringService` errors |
 | Insights not generating | Verify AI is configured; check logs for `InsightGenerationService` warnings |
 | KB count not growing | Check structured logs for ingestion errors after poll close / topic complete |
+| Data not persisting across restart | Verify `WithDataVolume()` is set on postgres; check Docker volume exists |
 | PIN gate not appearing | Ensure you're navigating to `/presenter/{SessionCode}` (not just `/presenter`) |
 | Session code unknown | Check startup logs for "Default session created: XXXXXXXX (PIN: 0000)" |
 | Session not on home page | Refresh `/` — session list is loaded from `SessionManager` |
 
 ---
 
-## 16. Slide System
+## 17. Slide System
 
 ### Verify Slides Load
 ```
@@ -745,7 +751,7 @@ All session data is persisted to PostgreSQL. Verify data survives app restarts a
 
 ---
 
-## 17. GitHub Repository Import
+## 18. GitHub Repository Import
 
 ### Creating a Session from GitHub Content
 
