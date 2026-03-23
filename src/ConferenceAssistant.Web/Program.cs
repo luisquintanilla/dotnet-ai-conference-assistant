@@ -331,13 +331,24 @@ if (savedSessions.Count > 0)
 
 var dataRoot = Path.Combine(app.Environment.ContentRootPath, "..", "..", "data");
 
-// Create the default demo session (this fires SessionCreated, which wires all AI pipelines)
+// Create the default demo session only if not already restored from database
 var sessionService = app.Services.GetRequiredService<ISessionService>();
-await sessionService.LoadSessionAsync(Path.Combine(dataRoot, "seed-topics.json"));
-app.Logger.LogInformation("Default session loaded: {Title} (code: {Code}, PIN: {Pin})",
-    sessionService.CurrentSession?.Title,
-    sessionService.CurrentSession?.SessionCode,
-    "0000");
+if (sessionManager.GetSession("DOTNETAI-CONF") is null)
+{
+    await sessionService.LoadSessionAsync(Path.Combine(dataRoot, "seed-topics.json"));
+    app.Logger.LogInformation("Default session loaded: {Title} (code: {Code}, PIN: {Pin})",
+        sessionService.CurrentSession?.Title,
+        sessionService.CurrentSession?.SessionCode,
+        "0000");
+}
+else
+{
+    // Set the default session code so SessionService points to the restored session
+    sessionService.SetDefaultSession("DOTNETAI-CONF");
+    app.Logger.LogInformation("Session restored from database: {Title} (code: {Code})",
+        sessionService.CurrentSession?.Title,
+        sessionService.CurrentSession?.SessionCode);
+}
 
 // Load slides from Markdown
 var slidesPath = Path.Combine(dataRoot, "slides.md");

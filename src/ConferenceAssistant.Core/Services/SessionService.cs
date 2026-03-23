@@ -54,6 +54,18 @@ public class SessionService : ISessionService
         context.SlideChanged += slide => SlideChanged?.Invoke(slide);
     }
 
+    public void SetDefaultSession(string sessionCode)
+    {
+        var ctx = _sessionManager.GetSession(sessionCode)
+            ?? throw new InvalidOperationException($"Session '{sessionCode}' not found.");
+        _defaultSessionCode = sessionCode;
+
+        ctx.TopicActivated += id => TopicActivated?.Invoke(id);
+        ctx.TopicCompleted += id => TopicCompleted?.Invoke(id);
+        ctx.SessionEnded += () => SessionEnded?.Invoke();
+        ctx.SlideChanged += slide => SlideChanged?.Invoke(slide);
+    }
+
     public Task LoadSlidesAsync(string slidesPath)
     {
         return _sessionManager.LoadSlidesForSessionAsync(_defaultSessionCode!, slidesPath);

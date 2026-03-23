@@ -15,6 +15,7 @@ public interface ISessionService
     int TotalSlides { get; }
 
     Task LoadSessionAsync(string seedTopicsPath);
+    void SetDefaultSession(string sessionCode);
     Task LoadSlidesAsync(string slidesPath);
     Task StartSessionAsync();
     Task ActivateTopicAsync(string topicId);
