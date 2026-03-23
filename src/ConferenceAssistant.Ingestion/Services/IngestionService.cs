@@ -209,31 +209,42 @@ public class IngestionService : IIngestionService
                 // Parse front matter
                 var parsed = MarkdownFrontMatterParser.Parse(rawContent);
 
-                // Create ConferenceRecord with enriched metadata
-                var record = new ConferenceRecord
-                {
-                    Id = $"github-{owner}-{repo}-{count}",
-                    Source = source,
-                    Content = !string.IsNullOrWhiteSpace(parsed.Body) ? parsed.Body : rawContent
-                };
-
-                FrontMatterEnricher.EnrichRecord(record, parsed.FrontMatter);
-
-                await _searchService.UpsertAsync(record);
-                count++;
-
+                // Always collect the document for drafting (independent of vector store)
                 documents.Add(new ImportedDocument(ingestionDoc.Identifier, rawContent, parsed.FrontMatter));
 
-                _logger.LogInformation("Ingested GitHub file: {FilePath} ({Source})", ingestionDoc.Identifier, source);
+                // Try to store in vector store (may fail if PostgreSQL isn't available)
+                try
+                {
+                    var record = new ConferenceRecord
+                    {
+                        Id = $"github-{owner}-{repo}-{count}",
+                        Source = source,
+                        Content = !string.IsNullOrWhiteSpace(parsed.Body) ? parsed.Body : rawContent
+                    };
+
+                    FrontMatterEnricher.EnrichRecord(record, parsed.FrontMatter);
+
+                    await _searchService.UpsertAsync(record);
+                    count++;
+
+                    _logger.LogInformation("Ingested GitHub file: {FilePath} ({Source})", ingestionDoc.Identifier, source);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Vector store upsert failed for {DocId} (document still available for drafting)", ingestionDoc.Identifier);
+                    errors.Add($"{ingestionDoc.Identifier}: Vector store - {ex.Message}");
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to ingest GitHub file: {DocId}", ingestionDoc.Identifier);
+                _logger.LogWarning(ex, "Failed to process GitHub file: {DocId}", ingestionDoc.Identifier);
                 errors.Add($"{ingestionDoc.Identifier}: {ex.Message}");
             }
         }
 
-        _logger.LogInformation("GitHub import complete: {Count} records from {Owner}/{Repo}", count, owner, repo);
+        _logger.LogInformation(
+            "GitHub import complete: {DocCount} documents fetched, {VectorCount} stored in vector DB from {Owner}/{Repo}",
+            documents.Count, count, owner, repo);
         return new GitHubImportResult(count, documents, errors);
     }
 
