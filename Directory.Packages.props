@@ -19,7 +19,12 @@
 
   <ItemGroup Label="Microsoft.Extensions.VectorData">
     <PackageVersion Include="Microsoft.Extensions.VectorData.Abstractions" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.73.0-preview" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Qdrant" Version="1.73.0-preview" />
+  </ItemGroup>
+
+  <ItemGroup Label="Qdrant">
+    <PackageVersion Include="Aspire.Hosting.Qdrant" Version="13.2.0" />
+    <PackageVersion Include="Aspire.Qdrant.Client" Version="13.2.0" />
   </ItemGroup>
 
   <ItemGroup Label="Microsoft.Agents (Agent Framework)">

@@ -11,6 +11,7 @@
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="QRCoder" />
     <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Aspire.Qdrant.Client" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
   </ItemGroup>

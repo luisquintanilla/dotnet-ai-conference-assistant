@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.VectorData;
 
 namespace ConferenceAssistant.Ingestion.Models;
@@ -5,7 +7,7 @@ namespace ConferenceAssistant.Ingestion.Models;
 public class ConferenceRecord
 {
     [VectorStoreKey]
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public Guid Id { get; set; } = Guid.NewGuid();
 
     [VectorStoreData]
     public string Source { get; set; } = "";
@@ -26,8 +28,17 @@ public class ConferenceRecord
     public string? Sentiment { get; set; }
 
     [VectorStoreData]
-    public DateTimeOffset IngestedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? IngestedAt { get; set; } = DateTimeOffset.UtcNow.ToString("O");
 
-    [VectorStoreVector(1536, DistanceFunction = DistanceFunction.CosineDistance, IndexKind = IndexKind.Hnsw)]
+    [VectorStoreVector(1536, DistanceFunction = DistanceFunction.CosineSimilarity, IndexKind = IndexKind.Hnsw)]
     public ReadOnlyMemory<float> Embedding { get; set; }
+
+    /// <summary>
+    /// Creates a deterministic GUID from a string key (for stable upsert behavior).
+    /// </summary>
+    public static Guid DeterministicId(string key)
+    {
+        var hash = MD5.HashData(Encoding.UTF8.GetBytes(key));
+        return new Guid(hash);
+    }
 }

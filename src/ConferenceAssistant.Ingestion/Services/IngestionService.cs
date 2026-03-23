@@ -2,7 +2,6 @@ using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.Extensions.Logging;
-using Microsoft.ML.Tokenizers;
 using ConferenceAssistant.Ingestion.Enrichers;
 using ConferenceAssistant.Ingestion.Models;
 using ConferenceAssistant.Ingestion.Readers;
@@ -31,77 +30,27 @@ public class IngestionService : IIngestionService
 
     public async Task<int> IngestOutlineAsync(string markdownPath)
     {
-        // 1. Reader — built-in Markdown reader from M.E.DataIngestion.Markdig
-        IngestionDocumentReader reader = new MarkdownReader();
-
-        // 2. Chunker — header-based splitting with token limits
-        var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
-        var chunkerOptions = new IngestionChunkerOptions(tokenizer)
-        {
-            MaxTokensPerChunk = 500,
-            OverlapTokens = 50
-        };
-        IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
-
-        // 3. Writer — stores chunks in the vector store with auto-generated embeddings
-        using var writer = new VectorStoreWriter<string>(
-            _searchService.VectorStore,
-            dimensionCount: 1536,
-            new VectorStoreWriterOptions { CollectionName = "conference_knowledge" });
-
-        // 4. Enrichers — AI-powered summary and keyword extraction
-        var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
-        var summaryEnricher = new SummaryEnricher(enricherOptions);
-        string[] keywords = [".NET", "AI", "Microsoft.Extensions.AI", "DataIngestion", "VectorData", "MCP", "Agents", "Aspire", "Copilot", "LLM", "embeddings"];
-        var keywordEnricher = new KeywordEnricher(enricherOptions, keywords);
-
-        // 5. Pipeline — compose reader → chunker → enrichers → writer
-        using IngestionPipeline<string> pipeline = new(reader, chunker, writer, new IngestionPipelineOptions(), _loggerFactory)
-        {
-            ChunkProcessors = { summaryEnricher, keywordEnricher }
-        };
-
-        // 6. Process the markdown file via the pipeline (demonstrates M.E.DataIngestion API)
-        int count = 0;
-        var dir = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(markdownPath))!);
-        var filename = Path.GetFileName(markdownPath);
-        await foreach (var result in pipeline.ProcessAsync(dir, filename))
-        {
-            if (result.Succeeded)
-            {
-                count++;
-                _logger.LogInformation("Ingested document {DocId} via pipeline", result.DocumentId);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to process document {DocId}", result.DocumentId);
-            }
-        }
-
-        // 7. Also create ConferenceRecord entries for searchability
-        //    (VectorStoreWriter uses its own record type; SemanticSearchService queries ConferenceRecord)
+        // Split markdown into header-based sections and create searchable ConferenceRecords
         var markdownContent = await File.ReadAllTextAsync(markdownPath);
         var sections = SplitMarkdownByHeaders(markdownContent);
-        int searchableCount = 0;
+        int count = 0;
         foreach (var (header, body) in sections)
         {
             if (string.IsNullOrWhiteSpace(body)) continue;
             var record = new ConferenceRecord
             {
-                Id = $"outline-{searchableCount}",
+                Id = ConferenceRecord.DeterministicId($"outline-{count}"),
                 Source = "outline",
                 Content = string.IsNullOrWhiteSpace(header)
                     ? body.Trim()
                     : $"{header}\n{body.Trim()}"
             };
             await _searchService.UpsertAsync(record);
-            searchableCount++;
+            count++;
         }
 
-        _logger.LogInformation(
-            "Outline ingestion complete: {PipelineCount} pipeline chunks, {SearchableCount} searchable records",
-            count, searchableCount);
-        return count + searchableCount;
+        _logger.LogInformation("Outline ingestion complete: {Count} searchable records", count);
+        return count;
     }
 
     public async Task<int> IngestResponseAsync(
@@ -119,7 +68,7 @@ public class IngestionService : IIngestionService
 
         var record = new ConferenceRecord
         {
-            Id = $"response-{pollId}",
+            Id = ConferenceRecord.DeterministicId($"response-{pollId}"),
             Source = "response",
             TopicId = topicId,
             Content = sb.ToString()
@@ -158,7 +107,7 @@ public class IngestionService : IIngestionService
     {
         var record = new ConferenceRecord
         {
-            Id = $"question-{questionId}",
+            Id = ConferenceRecord.DeterministicId($"question-{questionId}"),
             Source = "question",
             TopicId = topicId ?? "",
             Content = $"Audience question: {questionText}"
@@ -172,7 +121,7 @@ public class IngestionService : IIngestionService
     {
         var record = new ConferenceRecord
         {
-            Id = "session-summary",
+            Id = ConferenceRecord.DeterministicId("session-summary"),
             Source = "session-summary",
             Content = summaryContent
         };
@@ -217,7 +166,7 @@ public class IngestionService : IIngestionService
                 {
                     var record = new ConferenceRecord
                     {
-                        Id = $"github-{owner}-{repo}-{count}",
+                        Id = ConferenceRecord.DeterministicId($"github-{owner}-{repo}-{count}"),
                         Source = source,
                         Content = !string.IsNullOrWhiteSpace(parsed.Body) ? parsed.Body : rawContent
                     };

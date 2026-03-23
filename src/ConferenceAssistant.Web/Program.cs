@@ -70,7 +70,9 @@ openaiBuilder.AddEmbeddingGenerator("embedding");
 
 // ---------------------------------------------------------------------------
 // Ingestion + VectorData — knowledge base pipeline
+// Qdrant client registered via Aspire for persistent vector storage
 // ---------------------------------------------------------------------------
+builder.AddQdrantClient("qdrant");
 builder.Services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 builder.Services.AddSingleton<IIngestionService, IngestionService>();
 builder.Services.AddSingleton<ISessionDraftingService, SessionDraftingService>();

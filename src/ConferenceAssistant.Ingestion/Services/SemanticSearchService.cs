@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
-using Microsoft.SemanticKernel.Connectors.InMemory;
+using Microsoft.SemanticKernel.Connectors.Qdrant;
+using Qdrant.Client;
 using ConferenceAssistant.Ingestion.Models;
 
 namespace ConferenceAssistant.Ingestion.Services;
@@ -8,17 +9,18 @@ namespace ConferenceAssistant.Ingestion.Services;
 public class SemanticSearchService : ISemanticSearchService
 {
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
-    private readonly VectorStoreCollection<string, ConferenceRecord> _collection;
-    private readonly InMemoryVectorStore _vectorStore;
+    private readonly VectorStoreCollection<Guid, ConferenceRecord> _collection;
+    private readonly QdrantVectorStore _vectorStore;
     private int _recordCount;
     private bool _initialized;
 
     public SemanticSearchService(
-        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        QdrantClient qdrantClient)
     {
         _embeddingGenerator = embeddingGenerator;
-        _vectorStore = new InMemoryVectorStore();
-        _collection = _vectorStore.GetCollection<string, ConferenceRecord>("conference_knowledge");
+        _vectorStore = new QdrantVectorStore(qdrantClient, ownsClient: false);
+        _collection = _vectorStore.GetCollection<Guid, ConferenceRecord>("conference_knowledge");
     }
 
     /// <summary>
