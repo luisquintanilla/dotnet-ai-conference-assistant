@@ -18,15 +18,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 // ---------------------------------------------------------------------------
-// PostgreSQL + pgvector — NpgsqlDataSource with vector support + dynamic JSON
-// Shared by both EF Core and SemanticSearchService (pgvector)
+// PostgreSQL — NpgsqlDataSource with dynamic JSON for EF Core JSONB columns
 // ---------------------------------------------------------------------------
 builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
 {
     var connectionString = builder.Configuration.GetConnectionString("conferencedb")
         ?? throw new InvalidOperationException("Missing 'conferencedb' connection string");
     var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-    dataSourceBuilder.UseVector();
     dataSourceBuilder.EnableDynamicJson();
     return dataSourceBuilder.Build();
 });
