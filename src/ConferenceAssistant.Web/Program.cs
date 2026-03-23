@@ -127,10 +127,17 @@ sessionManager.SessionCreated += ctx =>
 {
     app.Logger.LogInformation("Session created: {Code} — {Title}", ctx.Session.SessionCode, ctx.Session.Title);
 
-    // Auto-answer audience questions via AI
+    // Auto-answer audience questions via AI (use ctx directly to avoid GetDefaultContext mismatch)
     ctx.QuestionReceived += q =>
     {
-        _ = Task.Run(() => questionAnswering.GenerateAiAnswerAsync(q.Id, q.Text, q.TopicId));
+        _ = Task.Run(async () =>
+        {
+            var answer = await questionAnswering.GenerateAiAnswerTextAsync(q.Text, q.TopicId);
+            if (!string.IsNullOrWhiteSpace(answer))
+            {
+                ctx.AnswerQuestion(q.Id, answer, isAiGenerated: true, authorLabel: "AI");
+            }
+        });
     };
 
     // Ingest poll results when a poll is closed + generate poll insights

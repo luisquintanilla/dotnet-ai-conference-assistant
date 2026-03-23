@@ -14,6 +14,19 @@ public class QuestionAnsweringService(
 {
     public async Task GenerateAiAnswerAsync(string questionId, string questionText, string? topicId = null)
     {
+        var answer = await GenerateAiAnswerTextAsync(questionText, topicId);
+        if (!string.IsNullOrWhiteSpace(answer))
+        {
+            await questionService.AnswerQuestionAsync(questionId, answer, isAiGenerated: true);
+        }
+    }
+
+    /// <summary>
+    /// Generates AI answer text without storing it. Callers that already have the correct
+    /// SessionContext should use this and call ctx.AnswerQuestion() directly.
+    /// </summary>
+    public async Task<string?> GenerateAiAnswerTextAsync(string questionText, string? topicId = null)
+    {
         try
         {
             // 1. Search local knowledge base
@@ -61,18 +74,19 @@ public class QuestionAnsweringService(
 
             if (!string.IsNullOrWhiteSpace(answer))
             {
-                await questionService.AnswerQuestionAsync(questionId, answer, isAiGenerated: true);
                 logger.LogInformation(
-                    "AI answer generated for question {QuestionId} (sources: local={Local}, docs={Docs}, wiki={Wiki})",
-                    questionId,
+                    "AI answer generated for question (sources: local={Local}, docs={Docs}, wiki={Wiki})",
                     !string.IsNullOrWhiteSpace(localContext),
                     !string.IsNullOrWhiteSpace(docsContext),
                     !string.IsNullOrWhiteSpace(deepWikiContext));
             }
+
+            return answer;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to generate AI answer for question {QuestionId}", questionId);
+            logger.LogWarning(ex, "Failed to generate AI answer for question");
+            return null;
         }
     }
 }
