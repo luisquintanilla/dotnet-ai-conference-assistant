@@ -2,10 +2,12 @@ using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.Extensions.Logging;
+using Microsoft.ML.Tokenizers;
 using ConferenceAssistant.Ingestion.Enrichers;
 using ConferenceAssistant.Ingestion.Models;
 using ConferenceAssistant.Ingestion.Readers;
 using ConferenceAssistant.Ingestion.Utilities;
+using ConferenceAssistant.Ingestion.Writers;
 
 namespace ConferenceAssistant.Ingestion.Services;
 
@@ -30,27 +32,55 @@ public class IngestionService : IIngestionService
 
     public async Task<int> IngestOutlineAsync(string markdownPath)
     {
-        // Split markdown into header-based sections and create searchable ConferenceRecords
-        var markdownContent = await File.ReadAllTextAsync(markdownPath);
-        var sections = SplitMarkdownByHeaders(markdownContent);
-        int count = 0;
-        foreach (var (header, body) in sections)
+        // 1. Reader — built-in Markdown reader from M.E.DataIngestion.Markdig
+        IngestionDocumentReader reader = new MarkdownReader();
+
+        // 2. Chunker — header-based splitting with token limits
+        var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
+        var chunkerOptions = new IngestionChunkerOptions(tokenizer)
         {
-            if (string.IsNullOrWhiteSpace(body)) continue;
-            var record = new ConferenceRecord
+            MaxTokensPerChunk = 500,
+            OverlapTokens = 50
+        };
+        IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
+
+        // 3. Writer — custom bridge: pipeline chunks → ConferenceRecord → Qdrant
+        using var writer = new ConferenceRecordWriter(
+            _searchService, "outline", _logger);
+
+        // 4. Enrichers — AI-powered summary and keyword extraction
+        var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
+        var summaryEnricher = new SummaryEnricher(enricherOptions);
+        string[] keywords = [".NET", "AI", "Microsoft.Extensions.AI", "DataIngestion", "VectorData", "MCP", "Agents", "Aspire", "Copilot", "LLM", "embeddings"];
+        var keywordEnricher = new KeywordEnricher(enricherOptions, keywords);
+
+        // 5. Pipeline — compose reader → chunker → enrichers → writer
+        using IngestionPipeline<string> pipeline = new(reader, chunker, writer, new IngestionPipelineOptions(), _loggerFactory)
+        {
+            ChunkProcessors = { summaryEnricher, keywordEnricher }
+        };
+
+        // 6. Process the markdown file through the full pipeline
+        int pipelineCount = 0;
+        var dir = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(markdownPath))!);
+        var filename = Path.GetFileName(markdownPath);
+        await foreach (var result in pipeline.ProcessAsync(dir, filename))
+        {
+            if (result.Succeeded)
             {
-                Id = ConferenceRecord.DeterministicId($"outline-{count}"),
-                Source = "outline",
-                Content = string.IsNullOrWhiteSpace(header)
-                    ? body.Trim()
-                    : $"{header}\n{body.Trim()}"
-            };
-            await _searchService.UpsertAsync(record);
-            count++;
+                pipelineCount++;
+                _logger.LogInformation("Ingested document {DocId} via pipeline", result.DocumentId);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to process document {DocId}", result.DocumentId);
+            }
         }
 
-        _logger.LogInformation("Outline ingestion complete: {Count} searchable records", count);
-        return count;
+        _logger.LogInformation(
+            "Outline ingestion complete: {PipelineCount} pipeline docs, {WriterCount} enriched records stored in Qdrant",
+            pipelineCount, writer.RecordsWritten);
+        return writer.RecordsWritten;
     }
 
     public async Task<int> IngestResponseAsync(
@@ -138,9 +168,14 @@ public class IngestionService : IIngestionService
         var reader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,
             _loggerFactory.CreateLogger<GitHubRepoReader>());
 
+        // Set up chunker for splitting large documents (reuses DataIngestion's HeaderChunker)
+        var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
+        var chunkerOptions = new IngestionChunkerOptions(tokenizer) { MaxTokensPerChunk = 500, OverlapTokens = 50 };
+        IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
+
         var documents = new List<ImportedDocument>();
         var errors = new List<string>();
-        int count = 0;
+        int vectorCount = 0;
         var source = $"github:{owner}/{repo}";
 
         await foreach (var ingestionDoc in reader.ReadAllAsync())
@@ -161,22 +196,27 @@ public class IngestionService : IIngestionService
                 // Always collect the document for drafting (independent of vector store)
                 documents.Add(new ImportedDocument(ingestionDoc.Identifier, rawContent, parsed.FrontMatter));
 
-                // Try to store in vector store (may fail if PostgreSQL isn't available)
+                // Chunk the document using DataIngestion's HeaderChunker and store each chunk
                 try
                 {
-                    var record = new ConferenceRecord
+                    await foreach (var chunk in chunker.ProcessAsync(ingestionDoc))
                     {
-                        Id = ConferenceRecord.DeterministicId($"github-{owner}-{repo}-{count}"),
-                        Source = source,
-                        Content = !string.IsNullOrWhiteSpace(parsed.Body) ? parsed.Body : rawContent
-                    };
+                        var record = new ConferenceRecord
+                        {
+                            Id = ConferenceRecord.DeterministicId($"github-{owner}-{repo}-{vectorCount}"),
+                            Source = source,
+                            Content = !string.IsNullOrWhiteSpace(chunk.Context)
+                                ? $"{chunk.Context}\n{chunk.Content}"
+                                : chunk.Content
+                        };
 
-                    FrontMatterEnricher.EnrichRecord(record, parsed.FrontMatter);
+                        FrontMatterEnricher.EnrichRecord(record, parsed.FrontMatter);
 
-                    await _searchService.UpsertAsync(record);
-                    count++;
+                        await _searchService.UpsertAsync(record);
+                        vectorCount++;
+                    }
 
-                    _logger.LogInformation("Ingested GitHub file: {FilePath} ({Source})", ingestionDoc.Identifier, source);
+                    _logger.LogInformation("Ingested GitHub file: {FilePath} ({ChunkCount} chunks)", ingestionDoc.Identifier, vectorCount);
                 }
                 catch (Exception ex)
                 {
@@ -192,41 +232,8 @@ public class IngestionService : IIngestionService
         }
 
         _logger.LogInformation(
-            "GitHub import complete: {DocCount} documents fetched, {VectorCount} stored in vector DB from {Owner}/{Repo}",
-            documents.Count, count, owner, repo);
-        return new GitHubImportResult(count, documents, errors);
-    }
-
-    /// <summary>
-    /// Simple header-based markdown splitting for creating searchable ConferenceRecords.
-    /// </summary>
-    private static List<(string Header, string Body)> SplitMarkdownByHeaders(string markdown)
-    {
-        var sections = new List<(string, string)>();
-        var lines = markdown.Split('\n');
-        string currentHeader = "";
-        var currentBody = new StringBuilder();
-
-        foreach (var line in lines)
-        {
-            if (line.StartsWith('#'))
-            {
-                if (currentBody.Length > 0 || !string.IsNullOrEmpty(currentHeader))
-                {
-                    sections.Add((currentHeader, currentBody.ToString()));
-                    currentBody.Clear();
-                }
-                currentHeader = line.TrimStart('#', ' ');
-            }
-            else
-            {
-                currentBody.AppendLine(line);
-            }
-        }
-
-        if (currentBody.Length > 0 || !string.IsNullOrEmpty(currentHeader))
-            sections.Add((currentHeader, currentBody.ToString()));
-
-        return sections;
+            "GitHub import complete: {DocCount} documents fetched, {VectorCount} chunks stored in vector DB from {Owner}/{Repo}",
+            documents.Count, vectorCount, owner, repo);
+        return new GitHubImportResult(vectorCount, documents, errors);
     }
 }

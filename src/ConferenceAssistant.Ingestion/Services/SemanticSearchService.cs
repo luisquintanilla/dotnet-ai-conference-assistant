@@ -24,7 +24,7 @@ public class SemanticSearchService : ISemanticSearchService
     }
 
     /// <summary>
-    /// Exposes the underlying VectorStore for use by IngestionPipeline's VectorStoreWriter.
+    /// Exposes the underlying VectorStore for use by the DataIngestion pipeline.
     /// </summary>
     public VectorStore VectorStore => _vectorStore;
 
