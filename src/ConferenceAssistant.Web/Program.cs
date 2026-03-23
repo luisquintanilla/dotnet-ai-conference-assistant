@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Npgsql;
 using ConferenceAssistant.Core.Services;
@@ -17,10 +18,28 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 // ---------------------------------------------------------------------------
-// PostgreSQL + EF Core — persistent storage via Aspire
+// PostgreSQL + pgvector — NpgsqlDataSource with vector support + dynamic JSON
+// Shared by both EF Core and SemanticSearchService (pgvector)
 // ---------------------------------------------------------------------------
-builder.AddNpgsqlDbContext<ConferenceDbContext>("conferencedb");
-builder.Services.AddDbContextFactory<ConferenceDbContext>();
+builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("conferencedb")
+        ?? throw new InvalidOperationException("Missing 'conferencedb' connection string");
+    var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+    dataSourceBuilder.UseVector();
+    dataSourceBuilder.EnableDynamicJson();
+    return dataSourceBuilder.Build();
+});
+
+// ---------------------------------------------------------------------------
+// PostgreSQL + EF Core — persistent storage using the shared NpgsqlDataSource
+// Uses DbContextFactory (singleton-safe) for fire-and-forget persistence tasks
+// ---------------------------------------------------------------------------
+builder.Services.AddDbContextFactory<ConferenceDbContext>((sp, options) =>
+{
+    var dataSource = sp.GetRequiredService<NpgsqlDataSource>();
+    options.UseNpgsql(dataSource);
+});
 builder.Services.AddSingleton<ISessionPersistenceService, SessionPersistenceService>();
 
 // ---------------------------------------------------------------------------
@@ -50,19 +69,6 @@ openaiBuilder.AddChatClient("chat")
     .UseLogging();
 
 openaiBuilder.AddEmbeddingGenerator("embedding");
-
-// ---------------------------------------------------------------------------
-// PostgreSQL + pgvector — NpgsqlDataSource with vector support
-// ---------------------------------------------------------------------------
-builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("conferencedb")
-        ?? throw new InvalidOperationException("Missing 'conferencedb' connection string");
-    var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-    dataSourceBuilder.UseVector();
-    dataSourceBuilder.EnableDynamicJson();
-    return dataSourceBuilder.Build();
-});
 
 // ---------------------------------------------------------------------------
 // Ingestion + VectorData — knowledge base pipeline
@@ -117,9 +123,9 @@ builder.Services.AddSingleton<IMcpContentClient, McpContentClient>();
 var app = builder.Build();
 
 // Ensure database schema is created
-using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<ConferenceDbContext>();
+    var dbFactory = app.Services.GetRequiredService<IDbContextFactory<ConferenceDbContext>>();
+    await using var db = await dbFactory.CreateDbContextAsync();
     await db.Database.EnsureCreatedAsync();
 }
 
