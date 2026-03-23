@@ -20,6 +20,8 @@ builder.AddServiceDefaults();
 // PostgreSQL + EF Core — persistent storage via Aspire
 // ---------------------------------------------------------------------------
 builder.AddNpgsqlDbContext<ConferenceDbContext>("conferencedb");
+builder.Services.AddDbContextFactory<ConferenceDbContext>();
+builder.Services.AddSingleton<ISessionPersistenceService, SessionPersistenceService>();
 
 // ---------------------------------------------------------------------------
 // Blazor Interactive Server
@@ -153,6 +155,11 @@ sessionManager.SessionCreated += ctx =>
 {
     app.Logger.LogInformation("Session created: {Code} — {Title}", ctx.Session.SessionCode, ctx.Session.Title);
 
+    var persistence = app.Services.GetRequiredService<ISessionPersistenceService>();
+
+    // Save the new session to database
+    _ = Task.Run(() => persistence.SaveSessionAsync(ctx));
+
     // Auto-answer audience questions via AI (use ctx directly to avoid GetDefaultContext mismatch)
     ctx.QuestionReceived += q =>
     {
@@ -270,11 +277,53 @@ sessionManager.SessionCreated += ctx =>
             }
         });
     };
+
+    // Persist to database on mutations
+    ctx.PollActivated += poll => _ = Task.Run(() => persistence.SavePollAsync(ctx.Session.Id, poll));
+    ctx.PollClosed += poll => _ = Task.Run(() => persistence.SavePollAsync(ctx.Session.Id, poll));
+    ctx.ResponseReceived += response => _ = Task.Run(() => persistence.SavePollResponseAsync(response));
+    ctx.QuestionReceived += q => _ = Task.Run(() => persistence.SaveQuestionAsync(ctx.Session.Id, q));
+    ctx.QuestionAnswered += q =>
+    {
+        var latestAnswer = q.Answers.LastOrDefault();
+        if (latestAnswer is not null)
+            _ = Task.Run(() => persistence.SaveQuestionAnswerAsync(q.Id, latestAnswer));
+    };
+    ctx.InsightGenerated += insight => _ = Task.Run(() => persistence.SaveInsightAsync(ctx.Session.Id, insight));
 };
 
 // ---------------------------------------------------------------------------
-// Startup: Load default demo session, ingest outline, initialize MCP clients
+// Startup: Restore persisted sessions, load default demo session, ingest outline
 // ---------------------------------------------------------------------------
+
+// Restore persisted sessions from database
+var persistenceService = app.Services.GetRequiredService<ISessionPersistenceService>();
+var savedSessions = await persistenceService.LoadAllSessionsAsync();
+if (savedSessions.Count > 0)
+{
+    foreach (var saved in savedSessions)
+    {
+        if (sessionManager.GetSession(saved.SessionCode) is not null) continue;
+
+        app.Logger.LogInformation("Restoring session: {Code} — {Title}", saved.SessionCode, saved.Title);
+        var ctx = sessionManager.CreateSession(saved.Title, saved.HostPin, saved.SessionCode, saved.Description);
+
+        // Overwrite the generated ID with the persisted one
+        ctx.Session.Id = saved.Id;
+        ctx.Session.Status = saved.Status;
+        ctx.Session.CreatedAt = saved.CreatedAt;
+        ctx.Session.StartedAt = saved.StartedAt;
+        ctx.Session.EndedAt = saved.EndedAt;
+
+        // Restore topics (replace the empty default ones)
+        ctx.Session.Topics.Clear();
+        foreach (var topic in saved.Topics.OrderBy(t => t.Order))
+        {
+            ctx.Session.Topics.Add(topic);
+        }
+    }
+}
+
 var dataRoot = Path.Combine(app.Environment.ContentRootPath, "..", "..", "data");
 
 // Create the default demo session (this fires SessionCreated, which wires all AI pipelines)

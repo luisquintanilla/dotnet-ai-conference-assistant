@@ -35,8 +35,13 @@
 │  └───────────────────────────────────────────────────┘     │
 │                                                            │
 │  ┌── VectorData ─────────────────────────────────────┐     │
-│  │  InMemoryVectorStore (auto-embedding)             │     │
+│  │  PostgresVectorStore (pgvector, auto-embedding)   │     │
 │  │  VectorStoreCollection + SearchAsync()            │     │
+│  └───────────────────────────────────────────────────┘     │
+│                                                            │
+│  ┌── Persistence ────────────────────────────────────┐     │
+│  │  ConferenceDbContext (EF Core + PostgreSQL)        │     │
+│  │  SessionPersistenceService (save-on-mutation)      │     │
 │  └───────────────────────────────────────────────────┘     │
 │                                                            │
 │  ┌── MCP ────────────────────────────────────────────┐     │
@@ -94,8 +99,12 @@ dotnet-ai-conference-assistant/
 │   │   │       ├── QuestionFeed.razor
 │   │   │       ├── AgentActivityLog.razor
 │   │   │       └── SlideRenderer.razor
+│   │   ├── Data/
+│   │   │   └── ConferenceDbContext.cs
 │   │   ├── Services/
-│   │   │   └── SessionStateService.cs
+│   │   │   ├── SessionStateService.cs
+│   │   │   ├── SessionPersistenceService.cs
+│   │   │   └── ISessionPersistenceService.cs
 │   │   └── wwwroot/
 │   │       └── css/
 │   │           └── app.css
@@ -288,10 +297,13 @@ Each project lists only its DIRECT package references. Transitive dependencies a
 
 ### ConferenceAssistant.Ingestion
 ```xml
-<PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+<PackageReference Include="Microsoft.Extensions.AI" />
 <PackageReference Include="Microsoft.Extensions.DataIngestion" />
 <PackageReference Include="Microsoft.Extensions.DataIngestion.Markdig" />
 <PackageReference Include="Microsoft.Extensions.VectorData.Abstractions" />
+<PackageReference Include="Microsoft.ML.Tokenizers" />
+<PackageReference Include="Microsoft.SemanticKernel.Connectors.PgVector" />
+<PackageReference Include="Npgsql" />
 ```
 Project reference: `ConferenceAssistant.Core`
 
@@ -313,6 +325,8 @@ Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`,
 
 ### ConferenceAssistant.Web
 ```xml
+<PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+<PackageReference Include="Microsoft.EntityFrameworkCore" />
 <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
 <PackageReference Include="Microsoft.Agents.AI.OpenAI" />
 <PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" />
@@ -330,8 +344,22 @@ Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`,
 ```xml
 <PackageReference Include="Aspire.Hosting.Azure.CognitiveServices" />
 <PackageReference Include="Aspire.Hosting.DevTunnels" />
+<PackageReference Include="Aspire.Hosting.PostgreSQL" />
 ```
 Project reference: `ConferenceAssistant.Web` (as Aspire resource)
+
+The AppHost provisions a PostgreSQL container using the `pgvector/pgvector:pg17` image, adds a pgWeb admin container for database inspection, and creates the `conferencedb` database:
+```csharp
+var postgres = builder.AddPostgres("postgres")
+    .WithImage("pgvector/pgvector")
+    .WithImageTag("pg17")
+    .WithPgWeb()
+    .WithDataVolume();
+
+var conferenceDb = postgres.AddDatabase("conferencedb");
+```
+
+The web project receives a reference to `conferenceDb` and waits for it to be ready before starting.
 
 #### Dev Tunnel
 The AppHost configures a dev tunnel with anonymous access so attendees can reach the web app from their devices:
@@ -384,13 +412,14 @@ Speaker clicks "Generate Poll"
 Speaker clicks "Close Poll & Analyze"
   → PollService.ClosePoll()
     → ResponseIngestionPipeline ingests all responses
-      → Chunked, sentiment-enriched, stored in VectorStore
+      → Chunked, sentiment-enriched, stored in PostgresVectorStore (pgvector)
+    → SessionPersistenceService saves poll + responses to PostgreSQL
     → ResponseAnalysisWorkflow starts
       → ResponseAnalyst agent:
           1. Calls get_poll_results tool → tallied results
           2. Searches vector store for audience context
           3. Generates insight via IChatClient
-          4. Calls store_insight tool → InMemoryStore
+          4. Calls store_insight tool → InMemoryStore + PostgreSQL
       → KnowledgeCurator agent (handoff):
           1. Searches vector store for related content
           2. Optionally calls Microsoft Learn MCP for docs
@@ -405,6 +434,7 @@ Speaker clicks "Close Poll & Analyze"
 ```
 Attendee types question in Session.razor
   → SessionStateService.AddQuestion()
+    → Question persisted to PostgreSQL via SessionPersistenceService
     → Question ingested into vector store (keyword enriched)
     → KnowledgeCurator agent triggered:
         1. Searches vector store for relevant context
@@ -457,6 +487,87 @@ Speaker clicks "Next" (or presses →/Space)
 | `Esc` | Close active overlay |
 
 Keyboard shortcuts are suppressed when focus is in a text input (poll question, answer form, etc.).
+
+---
+
+## Data Persistence
+
+The app uses a **hybrid persistence architecture** combining PostgreSQL (relational + vector) for durable storage with in-memory `SessionContext` objects for real-time SignalR event delivery.
+
+### PostgreSQL Infrastructure
+
+The Aspire AppHost provisions a PostgreSQL container using `pgvector/pgvector:pg17`:
+
+- **PostgreSQL server** — container with pgvector extension pre-installed
+- **Data volume** — `WithDataVolume()` persists data across container restarts
+- **pgWeb** — `WithPgWeb()` adds a browser-based database admin UI (visible in Aspire dashboard)
+- **conferencedb** — named database for all application data
+
+### EF Core — Relational Persistence
+
+`ConferenceDbContext` (`ConferenceAssistant.Web/Data/ConferenceDbContext.cs`) maps 8 entity types to PostgreSQL tables:
+
+| Table | Entity | Key JSONB Columns |
+|-------|--------|-------------------|
+| `sessions` | ConferenceSession | — |
+| `session_topics` | SessionTopic | TalkingPoints, SuggestedPolls |
+| `slides` | Slide | Bullets |
+| `polls` | Poll | Options |
+| `poll_responses` | PollResponse | — |
+| `audience_questions` | AudienceQuestion | — |
+| `question_answers` | QuestionAnswer | — |
+| `insights` | Insight | — |
+
+JSONB columns store complex types (`List<string>`, `List<SuggestedPoll>`) as native PostgreSQL JSON, enabling rich queries without separate join tables. Enum properties (Status, Type, Source) are stored as strings. Shadow FK properties (e.g., `SessionId`, `QuestionId`) establish relationships without polluting domain models.
+
+Schema is auto-created on startup via `EnsureCreatedAsync` — no migrations needed.
+
+### pgvector — Vector Persistence
+
+`PostgresVectorStore` from `Microsoft.SemanticKernel.Connectors.PgVector` replaces the previous `InMemoryVectorStore`:
+
+- **Collection name**: `conference_knowledge` (PostgreSQL naming convention)
+- **Record model**: `ConferenceRecord` with 1536-dimensional float vectors
+- **Index**: HNSW (Hierarchical Navigable Small World) for fast approximate nearest-neighbor search
+- **Distance metric**: Cosine distance
+- **NpgsqlDataSource**: Built with `UseVector()` to enable pgvector type mapping
+
+```csharp
+var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+dataSourceBuilder.UseVector();  // Enable pgvector extension
+var dataSource = dataSourceBuilder.Build();
+
+var vectorStore = new PostgresVectorStore(dataSource, ownsDataSource: false);
+var collection = vectorStore.GetCollection<string, ConferenceRecord>("conference_knowledge");
+```
+
+Vector data survives restarts — the knowledge base does not need to be re-ingested each time the app starts.
+
+### SessionPersistenceService — Save-on-Mutation
+
+`SessionPersistenceService` (`ConferenceAssistant.Web/Services/`) implements durable persistence with event-driven writes:
+
+| Event | What's Saved |
+|-------|-------------|
+| Session created | Full session + topics + slides |
+| Poll created/launched/closed | Poll entity (upsert) |
+| Vote cast | PollResponse entity (insert) |
+| Question asked | AudienceQuestion entity (upsert) |
+| Question answered | QuestionAnswer entity (insert) |
+| Insight generated | Insight entity (insert) |
+
+Uses `IDbContextFactory<ConferenceDbContext>` for short-lived DbContext instances (safe for async event handlers).
+
+### Session Restoration
+
+On startup, `LoadAllSessionsAsync()` restores previously saved sessions from PostgreSQL. In-memory `SessionContext` objects are rebuilt for real-time SignalR event delivery. This gives the best of both worlds:
+
+- **Durability** — sessions, polls, questions, and insights survive app restarts
+- **Real-time** — Blazor components subscribe to in-memory events for instant UI updates
+
+### Clear Runtime Data
+
+`ClearRuntimeDataAsync(sessionId)` removes polls, poll responses, questions, question answers, and insights from both the database and in-memory state — while preserving the session/topic/slide structure. This enables a "reset for next run" workflow without recreating the session.
 
 ---
 

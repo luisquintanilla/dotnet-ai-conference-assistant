@@ -303,6 +303,14 @@ public class SessionContext
     public IReadOnlyList<Insight> GetAllInsights()
         => _insights.ToList();
 
+    public void ClearRuntimeData()
+    {
+        _polls.Clear();
+        _responses.Clear();
+        _questions.Clear();
+        _insights.Clear();
+    }
+
     private void SyncTopicToSlide()
     {
         var slide = ActiveSlide;

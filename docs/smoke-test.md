@@ -15,7 +15,13 @@ dotnet --list-sdks          # must show 10.x.x
 # Aspire workload (install if missing)
 dotnet workload list        # should show "aspire"
 dotnet workload install aspire   # if not listed
+
+# Docker (required for PostgreSQL container)
+docker --version            # must be installed and running
 ```
+
+> ⚠️ **Docker is required.** The app uses a PostgreSQL + pgvector container
+> managed by Aspire. Docker Desktop (or equivalent) must be running before launch.
 
 ### Azure OpenAI Resource
 
@@ -100,6 +106,7 @@ info: Aspire.Hosting.DistributedApplication[0]
       Aspire version: 13.2.0
       Dashboard is running at: http://localhost:18888/login?t=<token>
       ...
+info: Starting PostgreSQL container (pgvector/pgvector:pg17)...
 info: Dev tunnel 'conference-tunnel' is running at: https://<id>.devtunnels.ms/
       Default session created: XXXXXXXX (PIN: 0000)
       Session loaded: The Microsoft AI Stack for .NET
@@ -109,6 +116,9 @@ info: Dev tunnel 'conference-tunnel' is running at: https://<id>.devtunnels.ms/
 > 📌 **Note the session code** in the startup logs (e.g., `XXXXXXXX`). The default
 > demo session is auto-created with PIN **`0000`** and an auto-generated session code.
 > You'll need this code to access presenter, display, and attendee views.
+
+> 🐘 **First launch takes longer** — Docker pulls the `pgvector/pgvector:pg17` image
+> (~400MB). Subsequent launches reuse the cached image and data volume.
 
 ### Key URLs
 
@@ -136,12 +146,14 @@ All non-AI features (manual polls, voting, questions, topic management) work fin
 | # | Check | Expected |
 |---|-------|----------|
 | 1 | Dashboard loads | Login page → click through with token from console |
-| 2 | Resources tab | Shows **`web`** (ASP.NET Core) and **`openai`** (Azure OpenAI) |
+| 2 | Resources tab | Shows **`web`** (ASP.NET Core), **`openai`** (Azure OpenAI), **`postgres`** (PostgreSQL + pgvector), **`conferencedb`** (database), and **`postgres-pgweb`** (pgWeb admin) |
 | 3 | `web` resource status | Running / Healthy |
 | 4 | `openai` resource status | Healthy (if secrets configured) |
-| 5 | Click `web` endpoint link | Opens the app in browser |
-| 6 | Structured Logs tab | Shows startup messages |
-| 7 | Traces tab | Shows HTTP request traces with OpenTelemetry spans |
+| 5 | `postgres` resource status | Running (Docker container) |
+| 6 | `postgres-pgweb` endpoint | Click to open pgWeb — browse `conferencedb` tables (sessions, polls, etc.) |
+| 7 | Click `web` endpoint link | Opens the app in browser |
+| 8 | Structured Logs tab | Shows startup messages including database schema creation |
+| 9 | Traces tab | Shows HTTP request traces with OpenTelemetry spans |
 
 ---
 
@@ -435,6 +447,9 @@ Invoke-RestMethod -Uri "$baseUrl/mcp" `
 The knowledge base starts with ~20 outline chunks and **grows in real-time** as the
 session progresses. This is the "snowball effect" — the core demo narrative.
 
+All vector data is persisted in PostgreSQL via pgvector — the knowledge base survives
+app restarts without re-ingestion.
+
 ### What Gets Ingested
 
 | Event | What's Ingested | Trigger |
@@ -586,7 +601,41 @@ Verify the complete data flow through one topic:
 
 ---
 
-## 14. Feature Matrix — What Works With/Without AI
+## 14. Data Persistence — PostgreSQL
+
+All session data is persisted to PostgreSQL. Verify data survives app restarts and can be cleared.
+
+### 14a. Verify Database via pgWeb
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Open Aspire dashboard → click `postgres-pgweb` endpoint | pgWeb admin UI loads |
+| 2 | Select `conferencedb` database | Tables listed: sessions, session_topics, slides, polls, poll_responses, audience_questions, question_answers, insights |
+| 3 | Query `SELECT * FROM sessions` | Default session visible with code, title, PIN |
+| 4 | Query `SELECT * FROM session_topics` | 5 topics with TalkingPoints and SuggestedPolls (JSONB) |
+
+### 14b. Data Persists Across Restart
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Launch a poll → vote → close → submit a question | Data visible in Presenter dashboard |
+| 2 | Stop the app (Ctrl+C / `aspire stop`) | App shuts down; PostgreSQL container keeps running |
+| 3 | Restart the app (`aspire run`) | App starts, reconnects to existing PostgreSQL |
+| 4 | Navigate to Presenter dashboard | Previous session restored with polls, questions, and insights intact |
+| 5 | KB count preserved | Knowledge base records still present (pgvector data persisted) |
+
+### 14c. Clear Runtime Data
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | `ClearRuntimeDataAsync` clears polls, responses, questions, answers, insights | Session/topic/slide structure preserved |
+| 2 | Presenter dashboard after clear | Polls, Q&A, and insights sections are empty |
+| 3 | Knowledge base unaffected | KB count unchanged (vector data separate from runtime data) |
+| 4 | Can launch new polls + ask new questions | Session fully functional after clear |
+
+---
+
+## 15. Feature Matrix — What Works With/Without AI
 
 | Feature | Without AI | With AI |
 |---------|:----------:|:-------:|

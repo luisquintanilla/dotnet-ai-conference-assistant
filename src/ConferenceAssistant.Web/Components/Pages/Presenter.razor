@@ -10,6 +10,7 @@
 @inject ISemanticSearchService SemanticSearchService
 @inject IInsightGenerationService InsightGenerationService
 @inject IContentImportService ContentImportService
+@inject ISessionPersistenceService PersistenceService
 @inject ISlideGenerationService SlideGenerationService
 @rendermode InteractiveServer
 
@@ -188,9 +189,37 @@
                         </div>
                     }
                 </div>
-            </div>
 
-            <!-- Center Column: Slides + Navigation + Poll Launch -->
+                <!-- Settings Section -->
+                <div class="settings-section">
+                    <button class="section-toggle" @onclick="() => isSettingsExpanded = !isSettingsExpanded">
+                        ⚙️ Settings @(isSettingsExpanded ? "▾" : "▸")
+                    </button>
+                    @if (isSettingsExpanded)
+                    {
+                        <div class="settings-content">
+                            @if (confirmClear is null)
+                            {
+                                <button class="btn btn-sm btn-danger-outline" @onclick='() => confirmClear = "polls"'>🗑️ Clear Polls</button>
+                                <button class="btn btn-sm btn-danger-outline" @onclick='() => confirmClear = "qa"'>🗑️ Clear Q&amp;A</button>
+                                <button class="btn btn-sm btn-danger-outline" @onclick='() => confirmClear = "all"'>🗑️ Clear All Data</button>
+                            }
+                            else
+                            {
+                                <div class="clear-confirm">
+                                    <p>Clear @confirmClear data? This cannot be undone.</p>
+                                    <button class="btn btn-sm btn-danger" @onclick="ExecuteClear">Confirm</button>
+                                    <button class="btn btn-sm" @onclick='() => confirmClear = null'>Cancel</button>
+                                </div>
+                            }
+                            @if (clearMessage is not null)
+                            {
+                                <p class="clear-message">@clearMessage</p>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
             <div class="panel center-column" tabindex="0" @onkeydown="HandleSlideKeydown">
                 @if (activeSlide is not null)
                 {
@@ -463,6 +492,11 @@
     // Import section collapse state
     private bool isImportExpanded;
 
+    // Settings / clear data state
+    private bool isSettingsExpanded;
+    private string? confirmClear;
+    private string? clearMessage;
+
     // Import tab state
     private string importRepoUrl = "";
     private string importRepoBranch = "";
@@ -567,6 +601,33 @@
             sessionContext.InsightGenerated -= onInsightGenerated;
             sessionContext.SlideChanged -= onSlideChanged;
         }
+    }
+
+    private async Task ExecuteClear()
+    {
+        if (sessionContext is null || session is null) return;
+
+        try
+        {
+            await PersistenceService.ClearRuntimeDataAsync(session.Id);
+            sessionContext.ClearRuntimeData();
+            RefreshState();
+
+            clearMessage = confirmClear switch
+            {
+                "polls" => "✅ Polls & responses cleared.",
+                "qa" => "✅ Q&A data cleared.",
+                "all" => "✅ All runtime data cleared.",
+                _ => "✅ Data cleared."
+            };
+        }
+        catch (Exception ex)
+        {
+            clearMessage = $"❌ Error: {ex.Message}";
+        }
+
+        confirmClear = null;
+        StateHasChanged();
     }
 
     private void RefreshState()
@@ -1051,6 +1112,71 @@
         font-size: 0.65rem;
         opacity: 0.45;
         margin-top: 0.1rem;
+    }
+
+    /* ===== Settings Section ===== */
+    .settings-section {
+        margin-top: 0.5rem;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        padding-top: 0.5rem;
+    }
+
+    .section-toggle {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: none;
+        border: none;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 0.8rem;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .section-toggle:hover {
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .settings-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .btn-danger-outline {
+        font-size: 0.75rem;
+        padding: 0.3rem 0.6rem;
+        border: 1px solid rgba(255, 107, 107, 0.3);
+        background: rgba(255, 107, 107, 0.05);
+        color: #ff6b6b;
+        border-radius: 0.4rem;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .btn-danger-outline:hover {
+        background: rgba(255, 107, 107, 0.15);
+        border-color: #ff6b6b;
+    }
+
+    .clear-confirm {
+        padding: 0.5rem;
+        background: rgba(255, 107, 107, 0.1);
+        border: 1px solid rgba(255, 107, 107, 0.2);
+        border-radius: 0.4rem;
+    }
+
+    .clear-confirm p {
+        font-size: 0.8rem;
+        margin: 0 0 0.4rem;
+        color: #ff6b6b;
+    }
+
+    .clear-message {
+        font-size: 0.75rem;
+        opacity: 0.8;
+        margin: 0.25rem 0 0;
     }
 
     /* ===== Import Section ===== */
