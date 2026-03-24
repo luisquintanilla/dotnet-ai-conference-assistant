@@ -379,19 +379,4 @@ _ = Task.Run(async () =>
     }
 });
 
-// Ingest outline at startup — await to ensure knowledge base is seeded before serving requests
-try
-{
-    var outlinePath = Path.Combine(dataRoot, "session-outline.md");
-    if (File.Exists(outlinePath))
-    {
-        var count = await ingestionService.IngestOutlineAsync(outlinePath);
-        app.Logger.LogInformation("Ingested {Count} outline chunks into knowledge base", count);
-    }
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Outline ingestion skipped (AI provider may not be configured)");
-}
-
 app.Run();

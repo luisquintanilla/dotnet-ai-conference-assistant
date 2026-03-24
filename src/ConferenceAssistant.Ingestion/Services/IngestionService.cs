@@ -7,7 +7,6 @@ using ConferenceAssistant.Ingestion.Enrichers;
 using ConferenceAssistant.Ingestion.Models;
 using ConferenceAssistant.Ingestion.Readers;
 using ConferenceAssistant.Ingestion.Utilities;
-using ConferenceAssistant.Ingestion.Writers;
 
 namespace ConferenceAssistant.Ingestion.Services;
 
@@ -28,59 +27,6 @@ public class IngestionService : IIngestionService
         _chatClient = chatClient;
         _loggerFactory = loggerFactory;
         _logger = logger;
-    }
-
-    public async Task<int> IngestOutlineAsync(string markdownPath)
-    {
-        // 1. Reader — built-in Markdown reader from M.E.DataIngestion.Markdig
-        IngestionDocumentReader reader = new MarkdownReader();
-
-        // 2. Chunker — header-based splitting with token limits
-        var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
-        var chunkerOptions = new IngestionChunkerOptions(tokenizer)
-        {
-            MaxTokensPerChunk = 500,
-            OverlapTokens = 50
-        };
-        IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
-
-        // 3. Writer — custom bridge: pipeline chunks → ConferenceRecord → Qdrant
-        using var writer = new ConferenceRecordWriter(
-            _searchService, "outline", _logger);
-
-        // 4. Enrichers — AI-powered summary and keyword extraction
-        var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
-        var summaryEnricher = new SummaryEnricher(enricherOptions);
-        string[] keywords = [".NET", "AI", "Microsoft.Extensions.AI", "DataIngestion", "VectorData", "MCP", "Agents", "Aspire", "Copilot", "LLM", "embeddings"];
-        var keywordEnricher = new KeywordEnricher(enricherOptions, keywords);
-
-        // 5. Pipeline — compose reader → chunker → enrichers → writer
-        using IngestionPipeline<string> pipeline = new(reader, chunker, writer, new IngestionPipelineOptions(), _loggerFactory)
-        {
-            ChunkProcessors = { summaryEnricher, keywordEnricher }
-        };
-
-        // 6. Process the markdown file through the full pipeline
-        int pipelineCount = 0;
-        var dir = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(markdownPath))!);
-        var filename = Path.GetFileName(markdownPath);
-        await foreach (var result in pipeline.ProcessAsync(dir, filename))
-        {
-            if (result.Succeeded)
-            {
-                pipelineCount++;
-                _logger.LogInformation("Ingested document {DocId} via pipeline", result.DocumentId);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to process document {DocId}", result.DocumentId);
-            }
-        }
-
-        _logger.LogInformation(
-            "Outline ingestion complete: {PipelineCount} pipeline docs, {WriterCount} enriched records stored in Qdrant",
-            pipelineCount, writer.RecordsWritten);
-        return writer.RecordsWritten;
     }
 
     public async Task<int> IngestResponseAsync(
@@ -168,10 +114,15 @@ public class IngestionService : IIngestionService
         var reader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,
             _loggerFactory.CreateLogger<GitHubRepoReader>());
 
-        // Set up chunker for splitting large documents (reuses DataIngestion's HeaderChunker)
+        // DataIngestion components — chunker + AI enrichers for high-quality vector records
         var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
         var chunkerOptions = new IngestionChunkerOptions(tokenizer) { MaxTokensPerChunk = 500, OverlapTokens = 50 };
         IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
+
+        var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
+        var summaryEnricher = new SummaryEnricher(enricherOptions);
+        string[] predefinedKeywords = [".NET", "AI", "Microsoft.Extensions.AI", "DataIngestion", "VectorData", "MCP", "Agents", "Aspire", "Copilot", "LLM", "embeddings"];
+        var keywordEnricher = new KeywordEnricher(enricherOptions, predefinedKeywords);
 
         var documents = new List<ImportedDocument>();
         var errors = new List<string>();
@@ -182,7 +133,6 @@ public class IngestionService : IIngestionService
         {
             try
             {
-                // Extract the raw markdown from the IngestionDocument
                 var rawContent = string.Join("\n", ingestionDoc.Sections
                     .SelectMany(s => s.Elements)
                     .OfType<IngestionDocumentParagraph>()
@@ -190,16 +140,20 @@ public class IngestionService : IIngestionService
 
                 if (string.IsNullOrWhiteSpace(rawContent)) continue;
 
-                // Parse front matter
                 var parsed = MarkdownFrontMatterParser.Parse(rawContent);
 
-                // Always collect the document for drafting (independent of vector store)
+                // Collect raw document for AI session drafting (independent of vector store)
                 documents.Add(new ImportedDocument(ingestionDoc.Identifier, rawContent, parsed.FrontMatter));
 
-                // Chunk the document using DataIngestion's HeaderChunker and store each chunk
+                // Compose DataIngestion components: chunker → enrichers → manual write
+                // This is the manual composition pattern (vs IngestionPipeline for local files)
                 try
                 {
-                    await foreach (var chunk in chunker.ProcessAsync(ingestionDoc))
+                    IAsyncEnumerable<IngestionChunk<string>> chunks = chunker.ProcessAsync(ingestionDoc);
+                    chunks = summaryEnricher.ProcessAsync(chunks);
+                    chunks = keywordEnricher.ProcessAsync(chunks);
+
+                    await foreach (var chunk in chunks)
                     {
                         var record = new ConferenceRecord
                         {
@@ -210,17 +164,29 @@ public class IngestionService : IIngestionService
                                 : chunk.Content
                         };
 
+                        // Transfer AI enrichment metadata from pipeline
+                        if (chunk.HasMetadata)
+                        {
+                            if (chunk.Metadata.TryGetValue("summary", out var summary) && summary is string s)
+                                record.Summary = s;
+                            if (chunk.Metadata.TryGetValue("keywords", out var kw) && kw is IEnumerable<string> kwList)
+                                record.Keywords = kwList.ToList();
+                        }
+
+                        // Apply front matter enrichment (per-document metadata)
                         FrontMatterEnricher.EnrichRecord(record, parsed.FrontMatter);
 
                         await _searchService.UpsertAsync(record);
                         vectorCount++;
                     }
 
-                    _logger.LogInformation("Ingested GitHub file: {FilePath} ({ChunkCount} chunks)", ingestionDoc.Identifier, vectorCount);
+                    _logger.LogInformation("Ingested GitHub file: {FilePath} (chunks stored so far: {ChunkCount})",
+                        ingestionDoc.Identifier, vectorCount);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Vector store upsert failed for {DocId} (document still available for drafting)", ingestionDoc.Identifier);
+                    _logger.LogWarning(ex, "Vector store ingestion failed for {DocId} (document still available for drafting)",
+                        ingestionDoc.Identifier);
                     errors.Add($"{ingestionDoc.Identifier}: Vector store - {ex.Message}");
                 }
             }
@@ -232,7 +198,7 @@ public class IngestionService : IIngestionService
         }
 
         _logger.LogInformation(
-            "GitHub import complete: {DocCount} documents fetched, {VectorCount} chunks stored in vector DB from {Owner}/{Repo}",
+            "GitHub import complete: {DocCount} docs fetched, {VectorCount} enriched chunks stored from {Owner}/{Repo}",
             documents.Count, vectorCount, owner, repo);
         return new GitHubImportResult(vectorCount, documents, errors);
     }
