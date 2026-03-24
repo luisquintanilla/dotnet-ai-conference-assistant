@@ -128,6 +128,23 @@ var app = builder.Build();
     var dbFactory = app.Services.GetRequiredService<IDbContextFactory<ConferenceDbContext>>();
     await using var db = await dbFactory.CreateDbContextAsync();
     await db.Database.EnsureCreatedAsync();
+
+    // EnsureCreatedAsync is a no-op when the DB already exists, so new tables
+    // added after initial creation need explicit CREATE TABLE IF NOT EXISTS.
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS ingestion_records (
+            "Id" text NOT NULL PRIMARY KEY,
+            "DocumentId" varchar(500) NOT NULL,
+            "Source" varchar(200) NOT NULL,
+            "ContentHash" varchar(64) NOT NULL,
+            "Status" varchar(20) NOT NULL,
+            "ErrorMessage" varchar(2000),
+            "CreatedAt" timestamp with time zone NOT NULL,
+            "UpdatedAt" timestamp with time zone NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "IX_ingestion_records_DocumentId_Source"
+            ON ingestion_records ("DocumentId", "Source");
+        """);
 }
 
 if (!app.Environment.IsDevelopment())
