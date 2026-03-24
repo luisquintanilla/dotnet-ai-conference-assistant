@@ -10,8 +10,8 @@ public class ResponseAnalysisWorkflow(IChatClient chatClient, AgentTools tools)
     {
         var options = new ChatOptions
         {
-            Tools = tools.AsToolList(
-                "GetPollResults", "SearchKnowledge", "GetAllPollResults", "SaveInsight")
+            Tools = [tools.GetPollResults, tools.SearchKnowledge,
+                     tools.GetAllPollResults, tools.SaveInsight]
         };
 
         var messages = new List<ChatMessage>

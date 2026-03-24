@@ -26,7 +26,7 @@ public class SessionSummaryWorkflow(IChatClient chatClient, AgentTools tools)
                 and its results. Summarize the key findings: which options won,
                 participation levels, and trends across polls. Be data-driven — cite percentages.
                 """,
-            tools: tools.AsToolList("GetAllPollResults"));
+            tools: [tools.GetAllPollResults]);
 
         ChatClientAgent questionAnalyst = new(
             chatClient,
@@ -37,7 +37,7 @@ public class SessionSummaryWorkflow(IChatClient chatClient, AgentTools tools)
                 all audience questions. Identify the top themes, most-upvoted questions,
                 knowledge gaps (unanswered or high-interest questions), and overall curiosity patterns.
                 """,
-            tools: tools.AsToolList("GetAudienceQuestions"));
+            tools: [tools.GetAudienceQuestions]);
 
         ChatClientAgent insightAnalyst = new(
             chatClient,
@@ -48,7 +48,7 @@ public class SessionSummaryWorkflow(IChatClient chatClient, AgentTools tools)
                 gather all generated insights and knowledge base content. Identify
                 overarching themes, recurring patterns, and key takeaways from the session.
                 """,
-            tools: tools.AsToolList("GetAllInsights", "SearchKnowledge"));
+            tools: [tools.GetAllInsights, tools.SearchKnowledge]);
 
         // Synthesizer agent: receives merged outputs from the 3 analysts
         ChatClientAgent synthesizer = new(
