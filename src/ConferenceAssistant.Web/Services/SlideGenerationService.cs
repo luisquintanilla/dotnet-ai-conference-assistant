@@ -1,22 +1,31 @@
 using System.Text;
 using ConferenceAssistant.Core.Services;
 using ConferenceAssistant.Ingestion.Models;
+using ConferenceAssistant.Ingestion.Services;
 using Microsoft.Extensions.AI;
 
 namespace ConferenceAssistant.Web.Services;
 
 public class SlideGenerationService(
     IChatClient chatClient,
+    ISemanticSearchService searchService,
     ILogger<SlideGenerationService> logger) : ISlideGenerationService
 {
     private static readonly string[] ContentSlideSubtitles =
         ["Key Points", "In Practice", "Deep Dive", "Going Further"];
 
     private const string EnhancementSystemPrompt = """
-        You are a conference slide deck enhancer. Given a basic slide deck in markdown format 
-        and source documents, enhance the slides with:
+        You are a conference slide deck enhancer. Given a basic slide deck in markdown format,
+        source documents, and knowledge base context, enhance the slides.
 
-        1. More detailed and natural speaker notes
+        GROUNDING RULES:
+        - Use ONLY information from the provided source documents and knowledge base context
+        - Do NOT invent facts, statistics, or technical claims not found in the sources
+        - When adding code examples, use only APIs and patterns mentioned in the sources
+        - If insufficient context exists for a topic, keep the existing slide content
+
+        ENHANCEMENT GOALS:
+        1. More detailed and natural speaker notes grounded in the source material
         2. Code example slides when source material references specific APIs or code
         3. Better section transitions
         4. Keep ALL existing slides, only enhance and add between them
@@ -71,7 +80,7 @@ public class SlideGenerationService(
 
         try
         {
-            var userPrompt = BuildEnhancementUserPrompt(baseline, documents);
+            var userPrompt = await BuildEnhancementUserPromptAsync(baseline, draft, documents);
 
             var response = await chatClient.GetResponseAsync(
                 [
@@ -196,13 +205,33 @@ public class SlideGenerationService(
             """.TrimLeadingIndentation();
     }
 
-    private static string BuildEnhancementUserPrompt(
-        string baseline, IReadOnlyList<ImportedDocument>? documents)
+    private async Task<string> BuildEnhancementUserPromptAsync(
+        string baseline, SessionDraft draft, IReadOnlyList<ImportedDocument>? documents)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Here is the baseline slide deck to enhance:");
         sb.AppendLine();
         sb.AppendLine(baseline);
+
+        // Search knowledge base for each topic to get grounded context
+        var kbContext = new StringBuilder();
+        foreach (var topic in draft.Topics)
+        {
+            var results = await searchService.SearchAsync(topic.Title, topK: 3);
+            if (results.Count > 0)
+            {
+                kbContext.AppendLine($"\n### Knowledge Base — {topic.Title}:");
+                foreach (var r in results)
+                    kbContext.AppendLine(r.Content);
+            }
+        }
+
+        if (kbContext.Length > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Knowledge base context (use this to ground your enhancements):");
+            sb.Append(kbContext);
+        }
 
         if (documents is { Count: > 0 })
         {

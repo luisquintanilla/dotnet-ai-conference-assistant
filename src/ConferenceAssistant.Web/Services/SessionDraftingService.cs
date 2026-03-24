@@ -1,12 +1,14 @@
 using System.Text;
 using System.Text.Json;
 using ConferenceAssistant.Ingestion.Models;
+using ConferenceAssistant.Ingestion.Services;
 using Microsoft.Extensions.AI;
 
 namespace ConferenceAssistant.Web.Services;
 
 public class SessionDraftingService(
     IChatClient chatClient,
+    ISemanticSearchService searchService,
     ILogger<SessionDraftingService> logger) : ISessionDraftingService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -25,8 +27,15 @@ public class SessionDraftingService(
         try
         {
             var systemPrompt = """
-                You are a conference session designer. Given a collection of technical content documents,
-                design a cohesive conference session with structured topics, talking points, and audience polls.
+                You are a conference session designer. Given a collection of technical content documents
+                and knowledge base context, design a cohesive conference session with structured topics,
+                talking points, and audience polls.
+
+                GROUNDING RULES:
+                - Base ALL topics, talking points, and polls on the provided documents and knowledge base
+                - Do NOT invent technical claims or features not mentioned in the sources
+                - Talking points should reference specific concepts, APIs, or patterns from the sources
+                - Poll questions should test real concepts from the source material
 
                 Return ONLY valid JSON in this exact format:
                 {
@@ -56,7 +65,7 @@ public class SessionDraftingService(
                 - Order topics from foundational to advanced
                 """;
 
-            var userPrompt = BuildUserPrompt(documents, sessionTitle);
+            var userPrompt = await BuildUserPromptAsync(documents, sessionTitle);
 
             var response = await chatClient.GetResponseAsync(
             [
@@ -81,7 +90,7 @@ public class SessionDraftingService(
         }
     }
 
-    private static string BuildUserPrompt(IReadOnlyList<ImportedDocument> documents, string? sessionTitle)
+    private async Task<string> BuildUserPromptAsync(IReadOnlyList<ImportedDocument> documents, string? sessionTitle)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Here are the imported documents to base the session on:\n");
@@ -103,10 +112,23 @@ public class SessionDraftingService(
                 sb.AppendLine($"## {doc.FilePath}");
             }
 
-            // Include a truncated body to keep prompt reasonable
             var body = doc.Content.Length > 500 ? doc.Content[..500] + "..." : doc.Content;
             sb.AppendLine(body);
             sb.AppendLine();
+        }
+
+        // Search knowledge base for broader context across all documents
+        var searchQuery = sessionTitle ?? string.Join(" ", documents.Take(3)
+            .Select(d => d.FrontMatter?.Title ?? d.FilePath));
+        var kbResults = await searchService.SearchAsync(searchQuery, topK: 5);
+        if (kbResults.Count > 0)
+        {
+            sb.AppendLine("\nKnowledge base context (use this to ground your topics and talking points):");
+            foreach (var r in kbResults)
+            {
+                sb.AppendLine($"- {r.Content}");
+                if (r.Context is not null) sb.AppendLine($"  Context: {r.Context}");
+            }
         }
 
         if (sessionTitle is not null)

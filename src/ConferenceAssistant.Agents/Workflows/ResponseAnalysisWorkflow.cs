@@ -1,3 +1,5 @@
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using ConferenceAssistant.Agents.Definitions;
 using ConferenceAssistant.Agents.Tools;
@@ -8,16 +10,31 @@ public class ResponseAnalysisWorkflow(IChatClient chatClient, AgentTools tools)
 {
     public async Task<string> ExecuteAsync(string pollId)
     {
-        var options = new ChatOptions { Tools = tools.AsToolList() };
+        ChatClientAgent agent = new(
+            chatClient,
+            name: "ResponseAnalyst",
+            description: "Analyzes poll results and generates insights",
+            instructions: AgentDefinitions.ResponseAnalystInstructions,
+            tools: tools.AsToolList());
 
+        var workflow = AgentWorkflowBuilder.BuildSequential([agent]);
 
-        var messages = new List<ChatMessage>
+        var run = await InProcessExecution.Default.RunAsync(
+            workflow,
+            $"Analyze the results for poll ID: {pollId}. Use the tools to get the results, find context, identify trends, and generate actionable insights.");
+
+        foreach (var evt in run.NewEvents)
         {
-            new(ChatRole.System, AgentDefinitions.ResponseAnalystInstructions),
-            new(ChatRole.User, $"Analyze the results for poll ID: {pollId}. Use the tools to get the results, find context, identify trends, and generate actionable insights.")
-        };
+            if (evt is ExecutorCompletedEvent completed && completed.Data is IEnumerable<ChatMessage> msgs)
+            {
+                var text = string.Join("\n", msgs
+                    .Where(m => m.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(m.Text))
+                    .Select(m => m.Text));
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
+            }
+        }
 
-        var response = await chatClient.GetResponseAsync(messages, options);
-        return response.Text;
+        return "Unable to analyze poll results — no agent output collected.";
     }
 }

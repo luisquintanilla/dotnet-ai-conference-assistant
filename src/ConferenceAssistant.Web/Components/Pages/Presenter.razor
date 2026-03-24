@@ -431,19 +431,6 @@
 
                 <div class="insights-section">
                     <h3>💡 Insights</h3>
-                    @if (activeTopic is not null)
-                    {
-                        <button class="btn btn-sm btn-insight" @onclick="GenerateInsightsManually" disabled="@isGeneratingInsights">
-                            @if (isGeneratingInsights)
-                            {
-                                <span>⏳ Generating...</span>
-                            }
-                            else
-                            {
-                                <span>🔄 Generate Insights</span>
-                            }
-                        </button>
-                    }
                     @if (topicInsights.Count == 0)
                     {
                         <div class="empty-state">
@@ -495,9 +482,6 @@
     // Question answering
     private string? answeringQuestionId;
     private string answerText = "";
-
-    // Insight generation
-    private bool isGeneratingInsights;
 
     // Import section collapse state
     private bool isImportExpanded;
@@ -852,32 +836,6 @@
         answerText = "";
 
         RefreshQuestions();
-    }
-
-    private async Task GenerateInsightsManually()
-    {
-        if (activeTopic is null || sessionContext is null) return;
-        isGeneratingInsights = true;
-        StateHasChanged();
-
-        try
-        {
-            await InsightGenerationService.GenerateTopicInsightsAsync(activeTopic.Id);
-
-            // Also generate poll insights for any closed polls in this topic
-            var closedPolls = sessionContext.GetPollsForTopic(activeTopic.Id)
-                .Where(p => p.Status == PollStatus.Closed);
-            foreach (var p in closedPolls)
-            {
-                await InsightGenerationService.GeneratePollInsightsAsync(p.Id);
-            }
-        }
-        finally
-        {
-            isGeneratingInsights = false;
-            RefreshInsights();
-            StateHasChanged();
-        }
     }
 
     // Slide navigation

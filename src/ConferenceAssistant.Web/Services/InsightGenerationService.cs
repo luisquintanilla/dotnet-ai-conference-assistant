@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using ConferenceAssistant.Core.Models;
 using ConferenceAssistant.Core.Services;
@@ -15,6 +16,9 @@ public class InsightGenerationService(
     ISemanticSearchService searchService,
     ILogger<InsightGenerationService> logger) : IInsightGenerationService
 {
+    // Debounce: prevent insight generation flood per topic
+    private readonly ConcurrentDictionary<string, DateTime> _lastInsightTime = new();
+    private static readonly TimeSpan InsightCooldown = TimeSpan.FromSeconds(30);
     public async Task GeneratePollInsightsAsync(string pollId)
     {
         try
@@ -182,6 +186,63 @@ public class InsightGenerationService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to generate topic insights for {TopicId}", topicId);
+        }
+    }
+
+    public async Task GenerateQuestionInsightsAsync(string topicId)
+    {
+        // Debounce: skip if we generated an insight for this topic recently
+        if (_lastInsightTime.TryGetValue(topicId, out var lastTime)
+            && DateTime.UtcNow - lastTime < InsightCooldown)
+        {
+            logger.LogDebug("Skipping question insight for {TopicId} — cooldown active", topicId);
+            return;
+        }
+
+        try
+        {
+            var topic = sessionService.CurrentSession?.Topics.FirstOrDefault(t => t.Id == topicId);
+            if (topic is null) return;
+
+            var questions = questionService.GetQuestionsForTopic(topicId);
+            if (questions.Count < 3) return; // Need enough questions to generate meaningful insight
+
+            var questionList = string.Join("\n", questions
+                .OrderByDescending(q => q.Upvotes)
+                .Take(10)
+                .Select(q => $"[{q.Upvotes} votes] {q.Text}"));
+
+            var prompt = $"""
+                These are audience questions from a live conference session on "{topic.Title}".
+                Identify the main theme or pattern in what the audience is asking about.
+                Provide a brief, actionable insight (1-2 sentences) about what the audience
+                wants to learn more about.
+
+                {questionList}
+                """;
+
+            var response = await chatClient.GetResponseAsync(
+            [
+                new(ChatRole.System, "You are a conference analytics assistant. Generate a brief insight about audience curiosity patterns."),
+                new(ChatRole.User, prompt)
+            ]);
+
+            var content = response.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                await insightService.AddInsightAsync(new Insight
+                {
+                    TopicId = topicId,
+                    Content = content,
+                    Type = InsightType.AudienceTrend
+                });
+                _lastInsightTime[topicId] = DateTime.UtcNow;
+                logger.LogInformation("Generated question-based insight for topic {TopicId}", topicId);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to generate question insight for {TopicId}", topicId);
         }
     }
 }

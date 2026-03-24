@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ConferenceAssistant.Core.Models;
+using ConferenceAssistant.Ingestion.Models;
 
 namespace ConferenceAssistant.Web.Data;
 
@@ -15,6 +16,7 @@ public class ConferenceDbContext : DbContext
     public DbSet<AudienceQuestion> Questions => Set<AudienceQuestion>();
     public DbSet<QuestionAnswer> QuestionAnswers => Set<QuestionAnswer>();
     public DbSet<Insight> Insights => Set<Insight>();
+    public DbSet<IngestionRecord> IngestionRecords => Set<IngestionRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,6 +107,19 @@ public class ConferenceDbContext : DbContext
             e.HasKey(i => i.Id);
             e.Property<string>("SessionId").HasMaxLength(50);
             e.Property(i => i.Type).HasConversion<string>().HasMaxLength(30);
+        });
+
+        // IngestionRecord
+        modelBuilder.Entity<IngestionRecord>(e =>
+        {
+            e.ToTable("ingestion_records");
+            e.HasKey(r => r.Id);
+            e.HasIndex(r => new { r.DocumentId, r.Source }).IsUnique();
+            e.Property(r => r.DocumentId).HasMaxLength(500);
+            e.Property(r => r.Source).HasMaxLength(200);
+            e.Property(r => r.ContentHash).HasMaxLength(64);
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.ErrorMessage).HasMaxLength(2000);
         });
     }
 }

@@ -74,6 +74,7 @@ openaiBuilder.AddEmbeddingGenerator("embedding");
 // ---------------------------------------------------------------------------
 builder.AddQdrantClient("qdrant");
 builder.Services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
+builder.Services.AddSingleton<IIngestionTracker, IngestionTracker>();
 builder.Services.AddSingleton<IIngestionService, IngestionService>();
 builder.Services.AddSingleton<ISessionDraftingService, SessionDraftingService>();
 builder.Services.AddSingleton<IContentImportService, ContentImportService>();
@@ -255,6 +256,10 @@ sessionManager.SessionCreated += ctx =>
             {
                 await ingestionService.IngestQuestionAsync(q.Id, q.Text, q.TopicId);
                 app.Logger.LogInformation("Ingested question {QuestionId} into knowledge base", q.Id);
+
+                // Auto-generate question-based insights (debounced internally)
+                if (q.TopicId is not null)
+                    await insightGen.GenerateQuestionInsightsAsync(q.TopicId);
             }
             catch (Exception ex)
             {

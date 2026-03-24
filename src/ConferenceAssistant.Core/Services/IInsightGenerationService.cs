@@ -4,4 +4,5 @@ public interface IInsightGenerationService
 {
     Task GenerateTopicInsightsAsync(string topicId);
     Task GeneratePollInsightsAsync(string pollId);
+    Task GenerateQuestionInsightsAsync(string topicId);
 }

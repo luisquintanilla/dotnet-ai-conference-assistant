@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DataIngestion;
@@ -13,6 +14,7 @@ public class IngestionService : IIngestionService
 {
     private readonly ISemanticSearchService _searchService;
     private readonly IChatClient _chatClient;
+    private readonly IIngestionTracker? _tracker;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<IngestionService> _logger;
 
@@ -20,12 +22,14 @@ public class IngestionService : IIngestionService
         ISemanticSearchService searchService,
         IChatClient chatClient,
         ILoggerFactory loggerFactory,
-        ILogger<IngestionService> logger)
+        ILogger<IngestionService> logger,
+        IIngestionTracker? tracker = null)
     {
         _searchService = searchService;
         _chatClient = chatClient;
         _loggerFactory = loggerFactory;
         _logger = logger;
+        _tracker = tracker;
     }
 
     public async Task<int> IngestResponseAsync(
@@ -76,6 +80,7 @@ public class IngestionService : IIngestionService
     public async Task<GitHubImportResult> IngestGitHubRepoAsync(
         string owner, string repo, string? subdirectory = null, string? branch = null)
     {
+        var source = $"github:{owner}/{repo}/{branch ?? "main"}";
         using var httpClient = new HttpClient();
         var ghReader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,
             _loggerFactory.CreateLogger<GitHubRepoReader>());
@@ -90,13 +95,53 @@ public class IngestionService : IIngestionService
                 download.Errors);
         }
 
+        // Phase 1b: Filter out unchanged files using content hashing
+        var filesToProcess = new List<FileInfo>();
+        foreach (var file in download.Files)
+        {
+            var docId = file.Name;
+            var content = await File.ReadAllTextAsync(file.FullName);
+            var hash = ComputeHash(content);
+
+            if (_tracker is not null)
+            {
+                var existing = await _tracker.GetRecordAsync(docId, source);
+                if (existing is not null && existing.ContentHash == hash && existing.Status == IngestionStatus.Completed)
+                {
+                    _logger.LogInformation("Skipping unchanged document: {DocId}", docId);
+                    continue;
+                }
+
+                // Mark as pending before processing
+                await _tracker.UpsertRecordAsync(new IngestionRecord
+                {
+                    DocumentId = docId,
+                    Source = source,
+                    ContentHash = hash,
+                    Status = IngestionStatus.Pending
+                });
+            }
+
+            filesToProcess.Add(file);
+        }
+
+        if (filesToProcess.Count == 0)
+        {
+            _logger.LogInformation("All documents unchanged for {Owner}/{Repo}, nothing to re-ingest", owner, repo);
+            var allDocs = download.Documents
+                .Select(d => new ImportedDocument(d.FilePath, d.Content, d.FrontMatter)).ToList();
+            return new GitHubImportResult(0, allDocs, download.Errors);
+        }
+
+        _logger.LogInformation("Processing {NewCount}/{TotalCount} documents (skipped {SkipCount} unchanged)",
+            filesToProcess.Count, download.Files.Count, download.Files.Count - filesToProcess.Count);
+
         // Register front matter for each document so FrontMatterChunkProcessor can find it
         var frontMatterProcessor = new FrontMatterChunkProcessor();
         foreach (var doc in download.Documents)
             frontMatterProcessor.AddFrontMatter(doc.FilePath, doc.FrontMatter);
 
-        // Phase 2: Run the REAL IngestionPipeline on the downloaded files
-        // reader → chunker → [enrichers] → writer
+        // Phase 2: Run the REAL IngestionPipeline on changed/new files
         IngestionDocumentReader reader = new MarkdownReader();
 
         var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
@@ -108,7 +153,11 @@ public class IngestionService : IIngestionService
         using var writer = new VectorStoreWriter<string>(
             _searchService.VectorStore,
             dimensionCount: 1536,
-            new VectorStoreWriterOptions { CollectionName = "conference_knowledge" });
+            new VectorStoreWriterOptions
+            {
+                CollectionName = "conference_knowledge",
+                IncrementalIngestion = true
+            });
 
         using IngestionPipeline<string> pipeline = new(reader, chunker, writer, new IngestionPipelineOptions(), _loggerFactory)
         {
@@ -123,17 +172,42 @@ public class IngestionService : IIngestionService
         int pipelineSuccessCount = 0;
         var pipelineErrors = new List<string>(download.Errors);
 
-        await foreach (var result in pipeline.ProcessAsync(download.Files))
+        await foreach (var result in pipeline.ProcessAsync(filesToProcess))
         {
             if (result.Succeeded)
             {
                 pipelineSuccessCount++;
                 _logger.LogInformation("Pipeline processed: {DocId}", result.DocumentId);
+
+                if (_tracker is not null)
+                {
+                    var content = await File.ReadAllTextAsync(
+                        filesToProcess.FirstOrDefault(f => f.Name == result.DocumentId)?.FullName ?? "");
+                    await _tracker.UpsertRecordAsync(new IngestionRecord
+                    {
+                        DocumentId = result.DocumentId ?? "",
+                        Source = source,
+                        ContentHash = content.Length > 0 ? ComputeHash(content) : "",
+                        Status = IngestionStatus.Completed
+                    });
+                }
             }
             else
             {
                 _logger.LogWarning("Pipeline failed for: {DocId}", result.DocumentId);
                 pipelineErrors.Add($"{result.DocumentId}: Pipeline processing failed");
+
+                if (_tracker is not null)
+                {
+                    await _tracker.UpsertRecordAsync(new IngestionRecord
+                    {
+                        DocumentId = result.DocumentId ?? "",
+                        Source = source,
+                        ContentHash = "",
+                        Status = IngestionStatus.Failed,
+                        ErrorMessage = "Pipeline processing failed"
+                    });
+                }
             }
         }
 
@@ -146,5 +220,11 @@ public class IngestionService : IIngestionService
             download.Documents.Count, pipelineSuccessCount, owner, repo);
 
         return new GitHubImportResult(pipelineSuccessCount, importedDocuments, pipelineErrors);
+    }
+
+    private static string ComputeHash(string content)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(content));
+        return Convert.ToHexStringLower(bytes);
     }
 }
