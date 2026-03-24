@@ -45,14 +45,31 @@ public class ConferenceRecordWriter : IngestionChunkWriter<string>
                 Content = chunk.Content
             };
 
-            // Transfer enrichment metadata (summaries, keywords) from the pipeline
+            // Transfer enrichment metadata from all chunk processors
             if (chunk.HasMetadata)
             {
+                // AI-generated summary (from SummaryEnricher)
                 if (chunk.Metadata.TryGetValue("summary", out var summary) && summary is string s)
                     record.Summary = s;
 
+                // AI-discovered keywords (from KeywordEnricher)
                 if (chunk.Metadata.TryGetValue("keywords", out var keywords) && keywords is IEnumerable<string> kw)
                     record.Keywords = kw.ToList();
+
+                // Front matter metadata (from FrontMatterChunkProcessor)
+                if (chunk.Metadata.TryGetValue("front_matter_technologies", out var techs) && techs is IEnumerable<string> techList)
+                {
+                    foreach (var tech in techList)
+                        if (!record.Keywords.Contains(tech, StringComparer.OrdinalIgnoreCase))
+                            record.Keywords.Add(tech);
+                }
+
+                if (chunk.Metadata.TryGetValue("front_matter_category", out var cat) && cat is string category)
+                    if (!record.Keywords.Contains(category, StringComparer.OrdinalIgnoreCase))
+                        record.Keywords.Add(category);
+
+                if (chunk.Metadata.TryGetValue("front_matter_job", out var job) && job is string jobDesc)
+                    record.Summary ??= jobDesc;
             }
 
             // Add header context if available

@@ -114,15 +114,15 @@ public class IngestionService : IIngestionService
         var reader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,
             _loggerFactory.CreateLogger<GitHubRepoReader>());
 
-        // DataIngestion components — chunker + AI enrichers for high-quality vector records
+        // DataIngestion components — chunker + enrichers for high-quality vector records
         var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
         var chunkerOptions = new IngestionChunkerOptions(tokenizer) { MaxTokensPerChunk = 500, OverlapTokens = 50 };
         IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
 
         var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
         var summaryEnricher = new SummaryEnricher(enricherOptions);
-        // Let the AI discover keywords from the content itself (no predefined list)
         var keywordEnricher = new KeywordEnricher(enricherOptions, ReadOnlySpan<string>.Empty);
+        var frontMatterProcessor = new FrontMatterChunkProcessor();
 
         var documents = new List<ImportedDocument>();
         var errors = new List<string>();
@@ -145,13 +145,16 @@ public class IngestionService : IIngestionService
                 // Collect raw document for AI session drafting (independent of vector store)
                 documents.Add(new ImportedDocument(ingestionDoc.Identifier, rawContent, parsed.FrontMatter));
 
-                // Compose DataIngestion components: chunker → enrichers → manual write
-                // This is the manual composition pattern (vs IngestionPipeline for local files)
+                // Register front matter for this document so the chunk processor can find it
+                frontMatterProcessor.AddFrontMatter(ingestionDoc.Identifier, parsed.FrontMatter);
+
+                // Compose DataIngestion components: chunker → enrichers (all IngestionChunkProcessor<string>)
                 try
                 {
                     IAsyncEnumerable<IngestionChunk<string>> chunks = chunker.ProcessAsync(ingestionDoc);
                     chunks = summaryEnricher.ProcessAsync(chunks);
                     chunks = keywordEnricher.ProcessAsync(chunks);
+                    chunks = frontMatterProcessor.ProcessAsync(chunks);
 
                     await foreach (var chunk in chunks)
                     {
@@ -164,17 +167,28 @@ public class IngestionService : IIngestionService
                                 : chunk.Content
                         };
 
-                        // Transfer AI enrichment metadata from pipeline
+                        // All enrichment flows through chunk.Metadata uniformly
                         if (chunk.HasMetadata)
                         {
                             if (chunk.Metadata.TryGetValue("summary", out var summary) && summary is string s)
                                 record.Summary = s;
+
                             if (chunk.Metadata.TryGetValue("keywords", out var kw) && kw is IEnumerable<string> kwList)
                                 record.Keywords = kwList.ToList();
-                        }
 
-                        // Apply front matter enrichment (per-document metadata)
-                        FrontMatterEnricher.EnrichRecord(record, parsed.FrontMatter);
+                            if (chunk.Metadata.TryGetValue(FrontMatterChunkProcessor.TechnologiesKey, out var techs)
+                                && techs is IEnumerable<string> techList)
+                                foreach (var tech in techList)
+                                    if (!record.Keywords.Contains(tech, StringComparer.OrdinalIgnoreCase))
+                                        record.Keywords.Add(tech);
+
+                            if (chunk.Metadata.TryGetValue(FrontMatterChunkProcessor.CategoryKey, out var cat) && cat is string category)
+                                if (!record.Keywords.Contains(category, StringComparer.OrdinalIgnoreCase))
+                                    record.Keywords.Add(category);
+
+                            if (chunk.Metadata.TryGetValue(FrontMatterChunkProcessor.JobKey, out var job) && job is string jobDesc)
+                                record.Summary ??= jobDesc;
+                        }
 
                         await _searchService.UpsertAsync(record);
                         vectorCount++;

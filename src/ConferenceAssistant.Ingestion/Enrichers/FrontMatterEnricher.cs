@@ -1,82 +1,61 @@
-using ConferenceAssistant.Ingestion.Models;
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.DataIngestion;
 using ConferenceAssistant.Ingestion.Utilities;
 
 namespace ConferenceAssistant.Ingestion.Enrichers;
 
 /// <summary>
-/// Enriches <see cref="ConferenceRecord"/> entries with metadata extracted from
-/// YAML front matter. This is a purely metadata-based enricher — no AI/IChatClient required.
+/// An <see cref="IngestionChunkProcessor{T}"/> that enriches chunks with metadata from
+/// YAML front matter. Unlike SummaryEnricher/KeywordEnricher (which call an LLM), this is
+/// a purely metadata-based enricher — no AI required.
 /// </summary>
-public class FrontMatterEnricher
+/// <remarks>
+/// Front matter is registered per-document via <see cref="AddFrontMatter"/> before processing.
+/// During processing, the enricher looks up front matter by <c>chunk.Document.Identifier</c>
+/// and adds technology keywords, category, and job description to chunk metadata.
+/// </remarks>
+public class FrontMatterChunkProcessor : IngestionChunkProcessor<string>
 {
-    private readonly Dictionary<string, FrontMatter> _frontMatterByKey;
+    /// <summary>Metadata key for technology keywords extracted from front matter.</summary>
+    public static string TechnologiesKey => "front_matter_technologies";
+
+    /// <summary>Metadata key for category extracted from front matter.</summary>
+    public static string CategoryKey => "front_matter_category";
+
+    /// <summary>Metadata key for job/description extracted from front matter.</summary>
+    public static string JobKey => "front_matter_job";
+
+    private readonly Dictionary<string, FrontMatter> _frontMatterByKey = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Creates a new enricher with a lookup of front matter keyed by file path or document ID.
+    /// Registers front matter for a document identifier. Call this before processing chunks.
     /// </summary>
-    public FrontMatterEnricher(Dictionary<string, FrontMatter> frontMatterByKey)
+    public void AddFrontMatter(string documentIdentifier, FrontMatter? frontMatter)
     {
-        _frontMatterByKey = frontMatterByKey ?? throw new ArgumentNullException(nameof(frontMatterByKey));
+        if (frontMatter is not null)
+            _frontMatterByKey[documentIdentifier] = frontMatter;
     }
 
-    /// <summary>
-    /// Creates an enricher with no pre-loaded front matter. Use <see cref="EnrichRecord"/> directly.
-    /// </summary>
-    public FrontMatterEnricher()
+    /// <inheritdoc />
+    public override async IAsyncEnumerable<IngestionChunk<string>> ProcessAsync(
+        IAsyncEnumerable<IngestionChunk<string>> chunks,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        _frontMatterByKey = new Dictionary<string, FrontMatter>(StringComparer.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Adds front matter for a given key (file path or document ID) to the lookup.
-    /// </summary>
-    public void AddFrontMatter(string key, FrontMatter frontMatter)
-    {
-        _frontMatterByKey[key] = frontMatter;
-    }
-
-    /// <summary>
-    /// Looks up front matter by key and enriches the record if found.
-    /// </summary>
-    public void EnrichRecord(ConferenceRecord record, string key)
-    {
-        if (_frontMatterByKey.TryGetValue(key, out var frontMatter))
+        await foreach (var chunk in chunks.WithCancellation(cancellationToken))
         {
-            EnrichRecord(record, frontMatter);
-        }
-    }
-
-    /// <summary>
-    /// Enriches a <see cref="ConferenceRecord"/> with technology keywords, category,
-    /// and job description from the provided front matter.
-    /// </summary>
-    public static void EnrichRecord(ConferenceRecord record, FrontMatter? frontMatter)
-    {
-        if (frontMatter is null)
-        {
-            return;
-        }
-
-        // Add technologies as keywords (avoid duplicates)
-        foreach (var tech in frontMatter.Technologies)
-        {
-            if (!string.IsNullOrWhiteSpace(tech) && !record.Keywords.Contains(tech, StringComparer.OrdinalIgnoreCase))
+            if (_frontMatterByKey.TryGetValue(chunk.Document.Identifier, out var fm))
             {
-                record.Keywords.Add(tech);
+                if (fm.Technologies.Count > 0)
+                    chunk.Metadata[TechnologiesKey] = fm.Technologies.ToArray();
+
+                if (!string.IsNullOrWhiteSpace(fm.Category))
+                    chunk.Metadata[CategoryKey] = fm.Category;
+
+                if (!string.IsNullOrWhiteSpace(fm.Job))
+                    chunk.Metadata[JobKey] = fm.Job;
             }
-        }
 
-        // Add category as a keyword
-        if (!string.IsNullOrWhiteSpace(frontMatter.Category) &&
-            !record.Keywords.Contains(frontMatter.Category, StringComparer.OrdinalIgnoreCase))
-        {
-            record.Keywords.Add(frontMatter.Category);
-        }
-
-        // Use the job description as a summary if none exists
-        if (!string.IsNullOrWhiteSpace(frontMatter.Job))
-        {
-            record.Summary ??= frontMatter.Job;
+            yield return chunk;
         }
     }
 }
