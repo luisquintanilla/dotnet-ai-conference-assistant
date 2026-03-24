@@ -211,7 +211,7 @@ sessionManager.SessionCreated += ctx =>
                     await ingestionService.IngestResponseAsync(poll.Id, poll.TopicId ?? "", poll.Question, results);
                     app.Logger.LogInformation("Ingested poll results for {PollId} into knowledge base", poll.Id);
                 }
-                await insightGen.GeneratePollInsightsAsync(poll.Id);
+                await insightGen.GeneratePollInsightsAsync(poll.Id, ctx.Session.SessionCode);
             }
             catch (Exception ex)
             {
@@ -261,7 +261,7 @@ sessionManager.SessionCreated += ctx =>
     // Generate topic summary + gap insights when a topic is completed
     ctx.TopicCompleted += topicId =>
     {
-        _ = Task.Run(() => insightGen.GenerateTopicInsightsAsync(topicId));
+        _ = Task.Run(() => insightGen.GenerateTopicInsightsAsync(topicId, ctx.Session.SessionCode));
     };
 
     // Ingest questions immediately when received (before they're answered)
@@ -276,7 +276,7 @@ sessionManager.SessionCreated += ctx =>
 
                 // Auto-generate question-based insights (debounced internally)
                 if (q.TopicId is not null)
-                    await insightGen.GenerateQuestionInsightsAsync(q.TopicId);
+                    await insightGen.GenerateQuestionInsightsAsync(q.TopicId, ctx.Session.SessionCode);
             }
             catch (Exception ex)
             {
