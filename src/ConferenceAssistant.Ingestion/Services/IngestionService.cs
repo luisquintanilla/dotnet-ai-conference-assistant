@@ -121,8 +121,8 @@ public class IngestionService : IIngestionService
 
         var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
         var summaryEnricher = new SummaryEnricher(enricherOptions);
-        string[] predefinedKeywords = [".NET", "AI", "Microsoft.Extensions.AI", "DataIngestion", "VectorData", "MCP", "Agents", "Aspire", "Copilot", "LLM", "embeddings"];
-        var keywordEnricher = new KeywordEnricher(enricherOptions, predefinedKeywords);
+        // Let the AI discover keywords from the content itself (no predefined list)
+        var keywordEnricher = new KeywordEnricher(enricherOptions, ReadOnlySpan<string>.Empty);
 
         var documents = new List<ImportedDocument>();
         var errors = new List<string>();
