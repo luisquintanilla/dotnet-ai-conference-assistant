@@ -28,10 +28,8 @@ public static class KnowledgeTools
                         var r = results[i];
                         sb.AppendLine($"\n--- Result {i + 1} [{r.Source}] ---");
                         sb.AppendLine(r.Content);
-                        if (!string.IsNullOrEmpty(r.Summary))
-                            sb.AppendLine($"Summary: {r.Summary}");
-                        if (r.Keywords.Count > 0)
-                            sb.AppendLine($"Keywords: {string.Join(", ", r.Keywords)}");
+                        if (!string.IsNullOrEmpty(r.Context))
+                            sb.AppendLine($"Context: {r.Context}");
                     }
                     return sb.ToString();
                 },

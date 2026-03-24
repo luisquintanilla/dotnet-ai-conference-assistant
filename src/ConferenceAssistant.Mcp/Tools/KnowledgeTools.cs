@@ -27,13 +27,9 @@ public class KnowledgeTools
         {
             var record = results[i];
             sb.AppendLine($"## {i + 1}. [{record.Source}]");
-            if (!string.IsNullOrEmpty(record.TopicId))
-                sb.AppendLine($"**Topic:** {record.TopicId}");
             sb.AppendLine(record.Content);
-            if (!string.IsNullOrEmpty(record.Summary))
-                sb.AppendLine($"*Summary: {record.Summary}*");
-            if (record.Keywords.Count > 0)
-                sb.AppendLine($"**Keywords:** {string.Join(", ", record.Keywords)}");
+            if (!string.IsNullOrEmpty(record.Context))
+                sb.AppendLine($"*Context: {record.Context}*");
             sb.AppendLine();
         }
 

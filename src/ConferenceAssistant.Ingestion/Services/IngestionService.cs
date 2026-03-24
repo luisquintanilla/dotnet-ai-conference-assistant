@@ -6,7 +6,6 @@ using Microsoft.ML.Tokenizers;
 using ConferenceAssistant.Ingestion.Enrichers;
 using ConferenceAssistant.Ingestion.Models;
 using ConferenceAssistant.Ingestion.Readers;
-using ConferenceAssistant.Ingestion.Utilities;
 
 namespace ConferenceAssistant.Ingestion.Services;
 
@@ -42,67 +41,34 @@ public class IngestionService : IIngestionService
             sb.AppendLine($"  - {option}: {count} votes ({percentage}%)");
         }
 
-        var record = new ConferenceRecord
-        {
-            Id = ConferenceRecord.DeterministicId($"response-{pollId}"),
-            Source = "response",
-            TopicId = topicId,
-            Content = sb.ToString()
-        };
-
-        await _searchService.UpsertAsync(record);
+        await _searchService.UpsertAsync(sb.ToString(), source: "response", documentId: $"response-{pollId}");
         return 1;
     }
 
     public async Task<int> IngestInsightAsync(string topicId, string insightContent)
     {
-        var record = new ConferenceRecord
-        {
-            Source = "insight",
-            TopicId = topicId,
-            Content = insightContent
-        };
-
-        await _searchService.UpsertAsync(record);
+        await _searchService.UpsertAsync(insightContent, source: "insight", documentId: $"insight-{topicId}");
         return 1;
     }
 
     public async Task<int> IngestExternalContentAsync(string source, string content)
     {
-        var record = new ConferenceRecord
-        {
-            Source = source,
-            Content = content
-        };
-
-        await _searchService.UpsertAsync(record);
+        await _searchService.UpsertAsync(content, source: source);
         return 1;
     }
 
     public async Task<int> IngestQuestionAsync(string questionId, string questionText, string? topicId = null)
     {
-        var record = new ConferenceRecord
-        {
-            Id = ConferenceRecord.DeterministicId($"question-{questionId}"),
-            Source = "question",
-            TopicId = topicId ?? "",
-            Content = $"Audience question: {questionText}"
-        };
-
-        await _searchService.UpsertAsync(record);
+        await _searchService.UpsertAsync(
+            $"Audience question: {questionText}",
+            source: "question",
+            documentId: $"question-{questionId}");
         return 1;
     }
 
     public async Task<int> IngestSessionSummaryAsync(string summaryContent)
     {
-        var record = new ConferenceRecord
-        {
-            Id = ConferenceRecord.DeterministicId("session-summary"),
-            Source = "session-summary",
-            Content = summaryContent
-        };
-
-        await _searchService.UpsertAsync(record);
+        await _searchService.UpsertAsync(summaryContent, source: "session-summary", documentId: "session-summary");
         _logger.LogInformation("Session summary ingested into knowledge base ({Length} chars)", summaryContent.Length);
         return 1;
     }
@@ -111,109 +77,74 @@ public class IngestionService : IIngestionService
         string owner, string repo, string? subdirectory = null, string? branch = null)
     {
         using var httpClient = new HttpClient();
-        var reader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,
+        var ghReader = new GitHubRepoReader(httpClient, owner, repo, subdirectory, branch,
             _loggerFactory.CreateLogger<GitHubRepoReader>());
 
-        // DataIngestion components — chunker + enrichers for high-quality vector records
+        // Phase 1: Download GitHub files to temp directory (also collects raw docs for drafting)
+        using var download = await ghReader.DownloadToDirectoryAsync();
+        if (download.Files.Count == 0)
+        {
+            _logger.LogWarning("No markdown files downloaded from {Owner}/{Repo}", owner, repo);
+            return new GitHubImportResult(0,
+                download.Documents.Select(d => new ImportedDocument(d.FilePath, d.Content, d.FrontMatter)).ToList(),
+                download.Errors);
+        }
+
+        // Register front matter for each document so FrontMatterChunkProcessor can find it
+        var frontMatterProcessor = new FrontMatterChunkProcessor();
+        foreach (var doc in download.Documents)
+            frontMatterProcessor.AddFrontMatter(doc.FilePath, doc.FrontMatter);
+
+        // Phase 2: Run the REAL IngestionPipeline on the downloaded files
+        // reader → chunker → [enrichers] → writer
+        IngestionDocumentReader reader = new MarkdownReader();
+
         var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
         var chunkerOptions = new IngestionChunkerOptions(tokenizer) { MaxTokensPerChunk = 500, OverlapTokens = 50 };
         IngestionChunker<string> chunker = new HeaderChunker(chunkerOptions);
 
         var enricherOptions = new EnricherOptions(_chatClient) { LoggerFactory = _loggerFactory };
-        var summaryEnricher = new SummaryEnricher(enricherOptions);
-        var keywordEnricher = new KeywordEnricher(enricherOptions, ReadOnlySpan<string>.Empty);
-        var frontMatterProcessor = new FrontMatterChunkProcessor();
 
-        var documents = new List<ImportedDocument>();
-        var errors = new List<string>();
-        int vectorCount = 0;
-        var source = $"github:{owner}/{repo}";
+        using var writer = new VectorStoreWriter<string>(
+            _searchService.VectorStore,
+            dimensionCount: 1536,
+            new VectorStoreWriterOptions { CollectionName = "conference_knowledge" });
 
-        await foreach (var ingestionDoc in reader.ReadAllAsync())
+        using IngestionPipeline<string> pipeline = new(reader, chunker, writer, new IngestionPipelineOptions(), _loggerFactory)
         {
-            try
+            ChunkProcessors =
             {
-                var rawContent = string.Join("\n", ingestionDoc.Sections
-                    .SelectMany(s => s.Elements)
-                    .OfType<IngestionDocumentParagraph>()
-                    .Select(p => p.Text));
-
-                if (string.IsNullOrWhiteSpace(rawContent)) continue;
-
-                var parsed = MarkdownFrontMatterParser.Parse(rawContent);
-
-                // Collect raw document for AI session drafting (independent of vector store)
-                documents.Add(new ImportedDocument(ingestionDoc.Identifier, rawContent, parsed.FrontMatter));
-
-                // Register front matter for this document so the chunk processor can find it
-                frontMatterProcessor.AddFrontMatter(ingestionDoc.Identifier, parsed.FrontMatter);
-
-                // Compose DataIngestion components: chunker → enrichers (all IngestionChunkProcessor<string>)
-                try
-                {
-                    IAsyncEnumerable<IngestionChunk<string>> chunks = chunker.ProcessAsync(ingestionDoc);
-                    chunks = summaryEnricher.ProcessAsync(chunks);
-                    chunks = keywordEnricher.ProcessAsync(chunks);
-                    chunks = frontMatterProcessor.ProcessAsync(chunks);
-
-                    await foreach (var chunk in chunks)
-                    {
-                        var record = new ConferenceRecord
-                        {
-                            Id = ConferenceRecord.DeterministicId($"github-{owner}-{repo}-{vectorCount}"),
-                            Source = source,
-                            Content = !string.IsNullOrWhiteSpace(chunk.Context)
-                                ? $"{chunk.Context}\n{chunk.Content}"
-                                : chunk.Content
-                        };
-
-                        // All enrichment flows through chunk.Metadata uniformly
-                        if (chunk.HasMetadata)
-                        {
-                            if (chunk.Metadata.TryGetValue("summary", out var summary) && summary is string s)
-                                record.Summary = s;
-
-                            if (chunk.Metadata.TryGetValue("keywords", out var kw) && kw is IEnumerable<string> kwList)
-                                record.Keywords = kwList.ToList();
-
-                            if (chunk.Metadata.TryGetValue(FrontMatterChunkProcessor.TechnologiesKey, out var techs)
-                                && techs is IEnumerable<string> techList)
-                                foreach (var tech in techList)
-                                    if (!record.Keywords.Contains(tech, StringComparer.OrdinalIgnoreCase))
-                                        record.Keywords.Add(tech);
-
-                            if (chunk.Metadata.TryGetValue(FrontMatterChunkProcessor.CategoryKey, out var cat) && cat is string category)
-                                if (!record.Keywords.Contains(category, StringComparer.OrdinalIgnoreCase))
-                                    record.Keywords.Add(category);
-
-                            if (chunk.Metadata.TryGetValue(FrontMatterChunkProcessor.JobKey, out var job) && job is string jobDesc)
-                                record.Summary ??= jobDesc;
-                        }
-
-                        await _searchService.UpsertAsync(record);
-                        vectorCount++;
-                    }
-
-                    _logger.LogInformation("Ingested GitHub file: {FilePath} (chunks stored so far: {ChunkCount})",
-                        ingestionDoc.Identifier, vectorCount);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Vector store ingestion failed for {DocId} (document still available for drafting)",
-                        ingestionDoc.Identifier);
-                    errors.Add($"{ingestionDoc.Identifier}: Vector store - {ex.Message}");
-                }
+                new SummaryEnricher(enricherOptions),
+                new KeywordEnricher(enricherOptions, ReadOnlySpan<string>.Empty),
+                frontMatterProcessor
             }
-            catch (Exception ex)
+        };
+
+        int pipelineSuccessCount = 0;
+        var pipelineErrors = new List<string>(download.Errors);
+
+        await foreach (var result in pipeline.ProcessAsync(download.Files))
+        {
+            if (result.Succeeded)
             {
-                _logger.LogWarning(ex, "Failed to process GitHub file: {DocId}", ingestionDoc.Identifier);
-                errors.Add($"{ingestionDoc.Identifier}: {ex.Message}");
+                pipelineSuccessCount++;
+                _logger.LogInformation("Pipeline processed: {DocId}", result.DocumentId);
+            }
+            else
+            {
+                _logger.LogWarning("Pipeline failed for: {DocId}", result.DocumentId);
+                pipelineErrors.Add($"{result.DocumentId}: Pipeline processing failed");
             }
         }
 
+        var importedDocuments = download.Documents
+            .Select(d => new ImportedDocument(d.FilePath, d.Content, d.FrontMatter))
+            .ToList();
+
         _logger.LogInformation(
-            "GitHub import complete: {DocCount} docs fetched, {VectorCount} enriched chunks stored from {Owner}/{Repo}",
-            documents.Count, vectorCount, owner, repo);
-        return new GitHubImportResult(vectorCount, documents, errors);
+            "GitHub import complete: {DocCount} docs fetched, {PipelineCount} processed via pipeline from {Owner}/{Repo}",
+            download.Documents.Count, pipelineSuccessCount, owner, repo);
+
+        return new GitHubImportResult(pipelineSuccessCount, importedDocuments, pipelineErrors);
     }
 }

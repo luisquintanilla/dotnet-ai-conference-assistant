@@ -121,12 +121,12 @@ public class InsightGenerationService(
             }
 
             // Search knowledge base for additional context
-            var kbResults = await searchService.SearchAsync($"topic {topic.Title}", topK: 3, sourceFilter: "outline");
+            var kbResults = await searchService.SearchAsync($"topic {topic.Title}", topK: 3);
             if (kbResults.Count > 0)
             {
                 sb.AppendLine("\n## Session Context:");
                 foreach (var r in kbResults)
-                    sb.AppendLine(r.Summary ?? r.Content);
+                    sb.AppendLine(r.Content);
             }
 
             var prompt = $"""

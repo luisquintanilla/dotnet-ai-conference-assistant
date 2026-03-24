@@ -95,6 +95,64 @@ public class GitHubRepoReader : IngestionDocumentReader
     }
 
     /// <summary>
+    /// Downloads all markdown files from the repository to a temp directory.
+    /// Returns the temp directory path, file list, and collected documents for drafting.
+    /// The caller is responsible for deleting the temp directory.
+    /// </summary>
+    public async Task<GitHubDownloadResult> DownloadToDirectoryAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var filePaths = await GetMarkdownFilePathsAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger?.LogInformation(
+            "Found {Count} markdown files in {Owner}/{Repo}/{Branch}{Subdirectory}",
+            filePaths.Count, _owner, _repo, _branch,
+            _subdirectory is not null ? $"/{_subdirectory}" : string.Empty);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), $"conference-pulse-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        var downloadedFiles = new List<FileInfo>();
+        var documents = new List<GitHubDownloadedDocument>();
+        var errors = new List<string>();
+
+        foreach (var path in filePaths)
+        {
+            try
+            {
+                var content = await DownloadFileContentAsync(path, cancellationToken).ConfigureAwait(false);
+                if (content is null) continue;
+
+                // Write to temp file (preserve directory structure)
+                var localPath = Path.Combine(tempDir, path.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
+                await File.WriteAllTextAsync(localPath, content, cancellationToken).ConfigureAwait(false);
+                downloadedFiles.Add(new FileInfo(localPath));
+
+                // Collect raw content for AI drafting
+                var parsed = Utilities.MarkdownFrontMatterParser.Parse(content);
+                documents.Add(new GitHubDownloadedDocument(path, content, parsed.FrontMatter));
+
+                _logger?.LogDebug("Downloaded {Path} to temp directory", path);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                _logger?.LogWarning("GitHub API rate limit reached while downloading {Path}. Stopping.", path);
+                errors.Add($"{path}: Rate limit exceeded");
+                break;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogWarning(ex, "Failed to download {Path}, skipping.", path);
+                errors.Add($"{path}: {ex.Message}");
+            }
+        }
+
+        _logger?.LogInformation("Downloaded {Count} files to {TempDir}", downloadedFiles.Count, tempDir);
+        return new GitHubDownloadResult(tempDir, downloadedFiles, documents, errors);
+    }
+
+    /// <summary>
     /// Fetches all markdown files from the configured GitHub repository and yields
     /// an <see cref="IngestionDocument"/> for each file. This is the primary entry point
     /// for bulk-reading GitHub content into the ingestion pipeline.
@@ -317,3 +375,24 @@ public class GitHubRepoReader : IngestionDocumentReader
         public string? Url { get; set; }
     }
 }
+
+/// <summary>
+/// Result of downloading GitHub files to a local temp directory.
+/// </summary>
+public record GitHubDownloadResult(
+    string TempDirectory,
+    IReadOnlyList<FileInfo> Files,
+    IReadOnlyList<GitHubDownloadedDocument> Documents,
+    IReadOnlyList<string> Errors) : IDisposable
+{
+    public void Dispose()
+    {
+        try { if (Directory.Exists(TempDirectory)) Directory.Delete(TempDirectory, recursive: true); }
+        catch { /* best effort cleanup */ }
+    }
+}
+
+public record GitHubDownloadedDocument(
+    string FilePath,
+    string Content,
+    ConferenceAssistant.Ingestion.Utilities.FrontMatter? FrontMatter);
