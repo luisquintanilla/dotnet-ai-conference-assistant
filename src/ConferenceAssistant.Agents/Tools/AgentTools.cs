@@ -25,6 +25,19 @@ public class AgentTools(
             .Select(m => (AITool)AIFunctionFactory.Create(m, this))
             .ToList();
 
+    /// <summary>
+    /// Creates a filtered <see cref="AITool"/> list containing only the named methods.
+    /// </summary>
+    public IList<AITool> AsToolList(params string[] methodNames)
+    {
+        var names = new HashSet<string>(methodNames, StringComparer.OrdinalIgnoreCase);
+        return GetType()
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m.GetCustomAttribute<DescriptionAttribute>() is not null && names.Contains(m.Name))
+            .Select(m => (AITool)AIFunctionFactory.Create(m, this))
+            .ToList();
+    }
+
     [Description("Search the session knowledge base for content related to the query")]
     public async Task<string> SearchKnowledge(string query, int maxResults = 5)
     {

@@ -70,6 +70,12 @@
                     </div>
                 </div>
 
+                <div class="generation-options">
+                    <label><input type="checkbox" @bind="generateSlides" /> Generate slides with speaker notes</label>
+                    <label><input type="checkbox" @bind="generatePolls" /> Generate suggested polls</label>
+                    <label><input type="checkbox" @bind="generateTalkingPoints" /> Generate talking points</label>
+                </div>
+
                 @if (!string.IsNullOrWhiteSpace(importStatus))
                 {
                     <div class="import-status">@importStatus</div>
@@ -179,6 +185,9 @@
     private ImportDraftResult? importResult;
     private HashSet<string> importedUrls = [];
     private bool showDedupWarning;
+    private bool generateSlides = true;
+    private bool generatePolls = true;
+    private bool generateTalkingPoints = true;
 
     private async Task CreateSessionAsync()
     {
@@ -344,7 +353,8 @@
             importResult = await ContentImportService.ImportAndDraftAsync(url,
                 string.IsNullOrWhiteSpace(title) ? null : title,
                 string.IsNullOrWhiteSpace(repoBranch) ? null : repoBranch.Trim(),
-                string.IsNullOrWhiteSpace(repoSubdirectory) ? null : repoSubdirectory.Trim());
+                string.IsNullOrWhiteSpace(repoSubdirectory) ? null : repoSubdirectory.Trim(),
+                new GenerationOptions(generateSlides, generatePolls, generateTalkingPoints));
             importStep = 1;
             importedUrls.Add(url);
 

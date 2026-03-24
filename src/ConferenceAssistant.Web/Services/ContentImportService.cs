@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using ConferenceAssistant.Ingestion.Models;
 using ConferenceAssistant.Ingestion.Services;
 
 namespace ConferenceAssistant.Web.Services;
@@ -10,8 +11,10 @@ public partial class ContentImportService(
     ILogger<ContentImportService> logger) : IContentImportService
 {
     public async Task<ImportDraftResult> ImportAndDraftAsync(
-        string repoUrl, string? sessionTitle = null, string? branch = null, string? subdirectory = null)
+        string repoUrl, string? sessionTitle = null, string? branch = null, string? subdirectory = null,
+        GenerationOptions? options = null)
     {
+        options ??= new GenerationOptions();
         var parsed = ParseRepoUrl(repoUrl);
         // Explicit params override URL-parsed values
         var effectiveBranch = branch ?? parsed.Branch;
@@ -29,17 +32,46 @@ public partial class ContentImportService(
         logger.LogInformation("AI draft generated: {TopicCount} topics for {Owner}/{Repo}",
             draft.Topics.Count, parsed.Owner, parsed.Repo);
 
+        // Strip polls if not requested
+        if (!options.GeneratePolls)
+        {
+            draft = draft with
+            {
+                Topics = draft.Topics
+                    .Select(t => t with { SuggestedPolls = [] })
+                    .ToList()
+            };
+        }
+
+        // Strip talking points if not requested
+        if (!options.GenerateTalkingPoints)
+        {
+            draft = draft with
+            {
+                Topics = draft.Topics
+                    .Select(t => t with { TalkingPoints = [] })
+                    .ToList()
+            };
+        }
+
         // Generate slide deck from draft
         string slideMarkdown;
-        try
+        if (!options.GenerateSlides)
         {
-            slideMarkdown = await slideGenerationService.GenerateEnhancedSlideMarkdownAsync(
-                draft, importResult.Documents);
+            slideMarkdown = "";
         }
-        catch (Exception ex)
+        else
         {
-            logger.LogWarning(ex, "AI slide enhancement failed, using programmatic slides");
-            slideMarkdown = slideGenerationService.GenerateSlideMarkdown(draft);
+            try
+            {
+                slideMarkdown = await slideGenerationService.GenerateEnhancedSlideMarkdownAsync(
+                    draft, importResult.Documents);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "AI slide enhancement failed, using programmatic slides");
+                slideMarkdown = slideGenerationService.GenerateSlideMarkdown(draft);
+            }
         }
 
         return new ImportDraftResult(importResult, draft, slideMarkdown);

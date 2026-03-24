@@ -5,7 +5,8 @@ namespace ConferenceAssistant.Web.Services;
 public interface IContentImportService
 {
     Task<ImportDraftResult> ImportAndDraftAsync(
-        string repoUrl, string? sessionTitle = null, string? branch = null, string? subdirectory = null);
+        string repoUrl, string? sessionTitle = null, string? branch = null, string? subdirectory = null,
+        GenerationOptions? options = null);
 }
 
 public record ImportDraftResult(

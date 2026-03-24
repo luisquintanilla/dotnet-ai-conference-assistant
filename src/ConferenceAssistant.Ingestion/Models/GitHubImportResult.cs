@@ -11,3 +11,8 @@ public record ImportedDocument(
     string FilePath,
     string Content,
     FrontMatter? FrontMatter);
+
+public record GenerationOptions(
+    bool GenerateSlides = true,
+    bool GeneratePolls = true,
+    bool GenerateTalkingPoints = true);
