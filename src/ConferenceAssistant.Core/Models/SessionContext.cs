@@ -311,6 +311,37 @@ public class SessionContext
         _insights.Clear();
     }
 
+    /// <summary>
+    /// Restores persisted runtime state without firing events.
+    /// Used during startup to rehydrate sessions from PostgreSQL.
+    /// </summary>
+    public void RestoreState(
+        IEnumerable<Poll>? polls = null,
+        IEnumerable<PollResponse>? responses = null,
+        IEnumerable<AudienceQuestion>? questions = null,
+        IEnumerable<Insight>? insights = null,
+        List<Slide>? slides = null)
+    {
+        if (polls is not null)
+            foreach (var poll in polls)
+                _polls[poll.Id] = poll;
+
+        if (responses is not null)
+            foreach (var response in responses)
+                _responses.Add(response);
+
+        if (questions is not null)
+            foreach (var question in questions)
+                _questions[question.Id] = question;
+
+        if (insights is not null)
+            foreach (var insight in insights)
+                _insights.Add(insight);
+
+        if (slides is not null)
+            LoadSlides(slides);
+    }
+
     private void SyncTopicToSlide()
     {
         var slide = ActiveSlide;

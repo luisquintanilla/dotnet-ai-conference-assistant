@@ -118,6 +118,9 @@ public class SessionManager : ISessionManager
         context.LoadSlides(slides);
     }
 
+    public bool RemoveSession(string sessionCode)
+        => _sessions.TryRemove(NormalizeCode(sessionCode), out _);
+
     private static string GenerateSessionCode()
     {
         const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

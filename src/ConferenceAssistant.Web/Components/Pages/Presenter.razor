@@ -12,6 +12,7 @@
 @inject IContentImportService ContentImportService
 @inject ISessionPersistenceService PersistenceService
 @inject ISlideGenerationService SlideGenerationService
+@inject NavigationManager Navigation
 @rendermode InteractiveServer
 
 <PageTitle>Presenter Dashboard</PageTitle>
@@ -203,11 +204,20 @@
                                 <button class="btn btn-sm btn-danger-outline" @onclick='() => confirmClear = "polls"'>🗑️ Clear Polls</button>
                                 <button class="btn btn-sm btn-danger-outline" @onclick='() => confirmClear = "qa"'>🗑️ Clear Q&amp;A</button>
                                 <button class="btn btn-sm btn-danger-outline" @onclick='() => confirmClear = "all"'>🗑️ Clear All Data</button>
+                                <hr style="margin: 0.5rem 0; border-color: rgba(255,255,255,0.1);" />
+                                <button class="btn btn-sm btn-danger-outline" @onclick='() => confirmClear = "session"'>⚠️ Delete Session</button>
                             }
                             else
                             {
                                 <div class="clear-confirm">
-                                    <p>Clear @confirmClear data? This cannot be undone.</p>
+                                    @if (confirmClear == "session")
+                                    {
+                                        <p>⚠️ Permanently delete this session and all its data? This cannot be undone.</p>
+                                    }
+                                    else
+                                    {
+                                        <p>Clear @confirmClear data? This cannot be undone.</p>
+                                    }
                                     <button class="btn btn-sm btn-danger" @onclick="ExecuteClear">Confirm</button>
                                     <button class="btn btn-sm" @onclick='() => confirmClear = null'>Cancel</button>
                                 </div>
@@ -609,6 +619,15 @@
 
         try
         {
+            if (confirmClear == "session")
+            {
+                await PersistenceService.DeleteSessionAsync(session.Id);
+                SessionManager.RemoveSession(session.SessionCode);
+                confirmClear = null;
+                Navigation.NavigateTo("/", forceLoad: true);
+                return;
+            }
+
             await PersistenceService.ClearRuntimeDataAsync(session.Id);
             sessionContext.ClearRuntimeData();
             RefreshState();

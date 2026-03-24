@@ -13,6 +13,7 @@ public interface ISessionManager
     bool ValidateHostPin(string sessionCode, string pin);
     IReadOnlyList<SessionInfo> ListActiveSessions();
     Task LoadSlidesForSessionAsync(string sessionCode, string slidesPath);
+    bool RemoveSession(string sessionCode);
 }
 
 public record SessionInfo(string SessionCode, string Title, string Description, SessionStatus Status, DateTimeOffset CreatedAt, int TopicCount);

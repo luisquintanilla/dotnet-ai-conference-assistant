@@ -102,6 +102,44 @@ public class SessionPersistenceService(
         }
     }
 
+    public async Task<PersistedSessionData?> LoadSessionRuntimeDataAsync(string sessionId)
+    {
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync();
+
+            var polls = await db.Polls
+                .Where(p => EF.Property<string>(p, "SessionId") == sessionId)
+                .ToListAsync();
+
+            var pollIds = polls.Select(p => p.Id).ToList();
+            var responses = await db.PollResponses
+                .Where(r => pollIds.Contains(r.PollId))
+                .ToListAsync();
+
+            var questions = await db.Questions
+                .Include(q => q.Answers)
+                .Where(q => EF.Property<string>(q, "SessionId") == sessionId)
+                .ToListAsync();
+
+            var insights = await db.Insights
+                .Where(i => EF.Property<string>(i, "SessionId") == sessionId)
+                .ToListAsync();
+
+            var slides = await db.Slides
+                .Where(s => EF.Property<string>(s, "SessionId") == sessionId)
+                .OrderBy(s => s.Order)
+                .ToListAsync();
+
+            return new PersistedSessionData(polls, responses, questions, insights, slides);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to load runtime data for session {SessionId}", sessionId);
+            return null;
+        }
+    }
+
     public async Task SavePollAsync(string sessionId, Poll poll)
     {
         try
@@ -232,6 +270,61 @@ public class SessionPersistenceService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to clear runtime data for session {SessionId}", sessionId);
+        }
+    }
+
+    public async Task DeleteSessionAsync(string sessionId)
+    {
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync();
+
+            // Delete child entities in FK order
+            var pollIds = await db.Polls
+                .Where(p => EF.Property<string>(p, "SessionId") == sessionId)
+                .Select(p => p.Id)
+                .ToListAsync();
+
+            var questionIds = await db.Questions
+                .Where(q => EF.Property<string>(q, "SessionId") == sessionId)
+                .Select(q => q.Id)
+                .ToListAsync();
+
+            // answers → questions
+            await db.QuestionAnswers
+                .Where(a => questionIds.Contains(EF.Property<string>(a, "QuestionId")))
+                .ExecuteDeleteAsync();
+            await db.Questions
+                .Where(q => EF.Property<string>(q, "SessionId") == sessionId)
+                .ExecuteDeleteAsync();
+
+            // responses → polls
+            await db.PollResponses
+                .Where(r => pollIds.Contains(r.PollId))
+                .ExecuteDeleteAsync();
+            await db.Polls
+                .Where(p => EF.Property<string>(p, "SessionId") == sessionId)
+                .ExecuteDeleteAsync();
+
+            // insights, slides
+            await db.Insights
+                .Where(i => EF.Property<string>(i, "SessionId") == sessionId)
+                .ExecuteDeleteAsync();
+            await db.Slides
+                .Where(s => EF.Property<string>(s, "SessionId") == sessionId)
+                .ExecuteDeleteAsync();
+
+            // session + topics (topics cascade via FK)
+            await db.Sessions
+                .Where(s => s.Id == sessionId)
+                .ExecuteDeleteAsync();
+
+            logger.LogInformation("Deleted session {SessionId} and all associated data", sessionId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to delete session {SessionId}", sessionId);
+            throw;
         }
     }
 }

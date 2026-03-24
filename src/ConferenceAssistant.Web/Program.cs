@@ -328,6 +328,23 @@ if (savedSessions.Count > 0)
         {
             ctx.Session.Topics.Add(topic);
         }
+
+        // Rehydrate runtime data (polls, responses, questions, insights, slides)
+        var runtimeData = await persistenceService.LoadSessionRuntimeDataAsync(saved.Id);
+        if (runtimeData is not null)
+        {
+            ctx.RestoreState(
+                polls: runtimeData.Polls,
+                responses: runtimeData.Responses,
+                questions: runtimeData.Questions,
+                insights: runtimeData.Insights,
+                slides: runtimeData.Slides);
+
+            app.Logger.LogInformation(
+                "Rehydrated session {Code}: {Polls} polls, {Questions} questions, {Insights} insights, {Slides} slides",
+                saved.SessionCode, runtimeData.Polls.Count, runtimeData.Questions.Count,
+                runtimeData.Insights.Count, runtimeData.Slides.Count);
+        }
     }
 }
 
