@@ -181,13 +181,19 @@ public class IngestionService : IIngestionService
 
                 if (_tracker is not null)
                 {
-                    var content = await File.ReadAllTextAsync(
-                        filesToProcess.FirstOrDefault(f => f.Name == result.DocumentId)?.FullName ?? "");
+                    var matchedFile = filesToProcess.FirstOrDefault(f =>
+                        f.FullName == result.DocumentId || f.Name == result.DocumentId);
+                    var hash = "";
+                    if (matchedFile is not null)
+                    {
+                        var content = await File.ReadAllTextAsync(matchedFile.FullName);
+                        hash = ComputeHash(content);
+                    }
                     await _tracker.UpsertRecordAsync(new IngestionRecord
                     {
                         DocumentId = result.DocumentId ?? "",
                         Source = source,
-                        ContentHash = content.Length > 0 ? ComputeHash(content) : "",
+                        ContentHash = hash,
                         Status = IngestionStatus.Completed
                     });
                 }
