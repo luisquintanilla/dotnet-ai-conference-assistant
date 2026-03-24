@@ -95,6 +95,14 @@ public class GitHubRepoReader : IngestionDocumentReader
     }
 
     /// <summary>
+    /// Replaces HTML entities with their text equivalents.
+    /// The DataIngestion MarkdownReader doesn't support HtmlEntityInline nodes.
+    /// </summary>
+    private static string SanitizeHtmlEntities(string markdown) =>
+        System.Text.RegularExpressions.Regex.Replace(markdown, @"&[a-zA-Z]+;|&#\d+;|&#x[0-9a-fA-F]+;",
+            m => WebUtility.HtmlDecode(m.Value) ?? m.Value);
+
+    /// <summary>
     /// Downloads all markdown files from the repository to a temp directory.
     /// Returns the temp directory path, file list, and collected documents for drafting.
     /// The caller is responsible for deleting the temp directory.
@@ -122,6 +130,9 @@ public class GitHubRepoReader : IngestionDocumentReader
             {
                 var content = await DownloadFileContentAsync(path, cancellationToken).ConfigureAwait(false);
                 if (content is null) continue;
+
+                // Sanitize HTML entities that MarkdownReader's parser doesn't support
+                content = SanitizeHtmlEntities(content);
 
                 // Write to temp file (preserve directory structure)
                 var localPath = Path.Combine(tempDir, path.Replace('/', Path.DirectorySeparatorChar));
