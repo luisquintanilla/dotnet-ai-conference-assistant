@@ -29,6 +29,8 @@ public class SessionContext
     public event Action<AudienceQuestion>? QuestionAnswered;
     public event Action<AudienceQuestion>? QuestionUpvoted;
     public event Action<Insight>? InsightGenerated;
+    public event Action<bool>? SlidesVisibilityChanged;
+    public event Action<AudienceQuestion?>? QuestionSpotlighted;
 
     public SessionContext(ConferenceSession session)
     {
@@ -40,6 +42,13 @@ public class SessionContext
         ? AllSlides[_activeSlideIndex] : null;
     public int ActiveSlideIndex => _activeSlideIndex;
     public int TotalSlides => AllSlides.Count;
+    public bool SlidesHidden { get; private set; }
+
+    public void SetSlidesVisibility(bool visible)
+    {
+        SlidesHidden = !visible;
+        SlidesVisibilityChanged?.Invoke(!visible);
+    }
 
     public void LoadSlides(List<Slide> slides)
     {
@@ -258,6 +267,16 @@ public class SessionContext
             .ToList();
 
     // --- Question Management ---
+    public AudienceQuestion? SpotlightedQuestion { get; private set; }
+
+    public void SpotlightQuestion(string? questionId)
+    {
+        if (questionId is not null && SpotlightedQuestion?.Id == questionId)
+            questionId = null; // Toggle off if same question
+        SpotlightedQuestion = questionId is null ? null : (_questions.TryGetValue(questionId, out var q) ? q : null);
+        QuestionSpotlighted?.Invoke(SpotlightedQuestion);
+    }
+
     public AudienceQuestion SubmitQuestion(string text, string? topicId = null, string? attendeeId = null)
     {
         var question = new AudienceQuestion

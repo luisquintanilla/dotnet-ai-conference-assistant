@@ -256,6 +256,9 @@
                         <button class="btn btn-sm" @onclick="GoBackSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) <= 0)">◀ Prev</button>
                         <span class="slide-progress">Slide @((sessionContext?.ActiveSlideIndex ?? -1) + 1) / @(sessionContext?.TotalSlides ?? 0)</span>
                         <button class="btn btn-sm" @onclick="AdvanceSlideAsync" disabled="@((sessionContext?.ActiveSlideIndex ?? -1) >= (sessionContext?.TotalSlides ?? 0) - 1)">Next ▶</button>
+                        <button class="btn btn-sm @(slidesHidden ? "btn-warning" : "")" @onclick="ToggleSlidesVisibility" title="@(slidesHidden ? "Show slides on display" : "Hide slides from display")">
+                            @(slidesHidden ? "👁️‍🗨️ Hidden" : "👁️ Visible")
+                        </button>
                     </div>
                 }
                 else
@@ -352,6 +355,11 @@
                                 <div class="question-header">
                                     <span class="upvote-count">👍 @q.Upvotes</span>
                                     <span class="question-text">@q.Text</span>
+                                    <button class="btn-icon spotlight-btn @(sessionContext?.SpotlightedQuestion?.Id == q.Id ? "spotlight-active" : "")"
+                                            @onclick="() => ToggleSpotlight(q.Id)"
+                                            title="@(sessionContext?.SpotlightedQuestion?.Id == q.Id ? "Remove from display" : "Show on display")">
+                                        📺
+                                    </button>
                                     @if (!string.IsNullOrEmpty(q.TopicId))
                                     {
                                         var qTopic = session?.Topics.FirstOrDefault(t => t.Id == q.TopicId);
@@ -476,6 +484,46 @@
     }
 </div>
 
+@if (showPollEditModal)
+{
+    <div class="poll-edit-overlay" @onclick="CancelPollEdit">
+        <div class="poll-edit-modal" @onclick:stopPropagation="true">
+            <h3>📊 Edit Poll Before Launch</h3>
+            <div class="poll-edit-field">
+                <label>Question</label>
+                <input type="text" @bind="editPollQuestion" placeholder="Poll question..." />
+            </div>
+            <div class="poll-edit-field">
+                <label>Options</label>
+                @for (var i = 0; i < editPollOptions.Count; i++)
+                {
+                    var index = i;
+                    <div class="poll-edit-option-row">
+                        <input type="text"
+                               value="@editPollOptions[index]"
+                               @onchange="(e) => UpdateEditPollOption(index, e.Value?.ToString() ?? string.Empty)"
+                               placeholder="Option @(index + 1)..." />
+                        @if (editPollOptions.Count > 2)
+                        {
+                            <button class="btn-icon" @onclick="() => RemoveEditPollOption(index)">✕</button>
+                        }
+                    </div>
+                }
+                <button class="btn btn-sm" @onclick="AddEditPollOption">+ Add Option</button>
+            </div>
+            <div class="poll-edit-field">
+                <label class="allow-other-label">
+                    <input type="checkbox" @bind="editAllowOther" /> Allow 'Other' responses
+                </label>
+            </div>
+            <div class="poll-edit-actions">
+                <button class="btn btn-sm" @onclick="CancelPollEdit">Cancel</button>
+                <button class="btn btn-sm btn-primary" disabled="@(!IsEditPollValid)" @onclick="LaunchEditedPoll">🚀 Launch Poll</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public string SessionCode { get; set; } = "";
 
@@ -537,6 +585,16 @@
     private Slide? nextSlide;
     private Action<Slide>? onSlideChanged;
 
+    // Slides visibility
+    private bool slidesHidden;
+
+    // Poll edit modal
+    private bool showPollEditModal;
+    private string editPollQuestion = "";
+    private List<string> editPollOptions = ["", ""];
+    private bool editAllowOther = true;
+    private PollSource editPollSource = PollSource.Custom;
+
     // Event handler references for cleanup
     private Action<PollResponse>? onResponseReceived;
     private Action<Poll>? onPollActivated;
@@ -545,6 +603,8 @@
     private Action<AudienceQuestion>? onQuestionAnswered;
     private Action<AudienceQuestion>? onQuestionUpvoted;
     private Action<Insight>? onInsightGenerated;
+    private Action<bool>? onSlidesVisibilityChanged;
+    private Action<AudienceQuestion?>? onQuestionSpotlighted;
     private Timer? _knowledgeBaseTimer;
 
     protected override void OnInitialized()
@@ -599,6 +659,14 @@
         sessionContext.InsightGenerated += onInsightGenerated;
         sessionContext.SlideChanged += onSlideChanged;
 
+        onSlidesVisibilityChanged = visible => InvokeAsync(() => { slidesHidden = !visible; StateHasChanged(); });
+        sessionContext.SlidesVisibilityChanged += onSlidesVisibilityChanged;
+
+        onQuestionSpotlighted = _ => InvokeAsync(StateHasChanged);
+        sessionContext.QuestionSpotlighted += onQuestionSpotlighted;
+
+        slidesHidden = sessionContext.SlidesHidden;
+
         // Periodic refresh of knowledge base count (catches background ingestion)
         _knowledgeBaseTimer = new Timer(_ =>
             InvokeAsync(() => { RefreshKnowledgeBaseCount(); StateHasChanged(); }),
@@ -620,6 +688,8 @@
             sessionContext.QuestionUpvoted -= onQuestionUpvoted;
             sessionContext.InsightGenerated -= onInsightGenerated;
             sessionContext.SlideChanged -= onSlideChanged;
+            sessionContext.SlidesVisibilityChanged -= onSlidesVisibilityChanged;
+            sessionContext.QuestionSpotlighted -= onQuestionSpotlighted;
         }
     }
 
@@ -766,23 +836,26 @@
 
     private async Task AutoGeneratePoll()
     {
-        if (sessionContext is null) return;
-        if (activeTopic is null) return; // Auto-generate requires a topic for suggested polls
+        if (sessionContext is null || activeTopic is null) return;
         var suggested = activeTopic.SuggestedPolls.FirstOrDefault();
         if (suggested is null) return;
-        var poll = sessionContext.CreatePoll(activeTopic.Id, suggested.Question, suggested.Options, PollSource.Generated, allowOther: true);
-        sessionContext.ActivatePoll(poll.Id);
-        RefreshState();
+        editPollQuestion = suggested.Question;
+        editPollOptions = new List<string>(suggested.Options);
+        editAllowOther = true;
+        editPollSource = PollSource.Generated;
+        showPollEditModal = true;
     }
 
     private void LaunchSelectedSuggestedPoll()
     {
         if (activeTopic is null || selectedSuggestedPollIndex < 0 || sessionContext is null) return;
         var sp = activeTopic.SuggestedPolls[selectedSuggestedPollIndex];
-        var poll = sessionContext.CreatePoll(activeTopic.Id, sp.Question, sp.Options, PollSource.Suggested, allowOther: true);
-        sessionContext.ActivatePoll(poll.Id);
+        editPollQuestion = sp.Question;
+        editPollOptions = new List<string>(sp.Options);
+        editAllowOther = true;
+        editPollSource = PollSource.Suggested;
+        showPollEditModal = true;
         selectedSuggestedPollIndex = -1;
-        RefreshState();
     }
 
     private void ToggleCustomPollForm()
@@ -895,7 +968,11 @@
         }
         else if (e.Key is "Escape")
         {
-            if (showCustomPollForm)
+            if (showPollEditModal)
+            {
+                showPollEditModal = false;
+            }
+            else if (showCustomPollForm)
             {
                 showCustomPollForm = false;
             }
@@ -905,6 +982,55 @@
             }
         }
     }
+
+    // Slides visibility toggle
+    private void ToggleSlidesVisibility()
+    {
+        slidesHidden = !slidesHidden;
+        sessionContext?.SetSlidesVisibility(!slidesHidden);
+    }
+
+    // Spotlight question on display
+    private void ToggleSpotlight(string questionId)
+    {
+        sessionContext?.SpotlightQuestion(questionId);
+        StateHasChanged();
+    }
+
+    // Poll edit modal methods
+    private void LaunchEditedPoll()
+    {
+        if (sessionContext is null) return;
+        var options = editPollOptions.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList();
+        if (string.IsNullOrWhiteSpace(editPollQuestion) || options.Count < 2) return;
+        var poll = sessionContext.CreatePoll(activeTopic?.Id, editPollQuestion.Trim(), options, editPollSource, allowOther: editAllowOther);
+        sessionContext.ActivatePoll(poll.Id);
+        showPollEditModal = false;
+        RefreshState();
+    }
+
+    private void CancelPollEdit()
+    {
+        showPollEditModal = false;
+    }
+
+    private void AddEditPollOption() => editPollOptions.Add("");
+
+    private void RemoveEditPollOption(int index)
+    {
+        if (index >= 0 && index < editPollOptions.Count && editPollOptions.Count > 2)
+            editPollOptions.RemoveAt(index);
+    }
+
+    private void UpdateEditPollOption(int index, string value)
+    {
+        if (index >= 0 && index < editPollOptions.Count)
+            editPollOptions[index] = value;
+    }
+
+    private bool IsEditPollValid =>
+        !string.IsNullOrWhiteSpace(editPollQuestion)
+        && editPollOptions.Count(o => !string.IsNullOrWhiteSpace(o)) >= 2;
 
     // Import actions
     private async Task ImportRepo()
@@ -1994,5 +2120,96 @@
             grid-template-columns: 1fr;
             grid-template-rows: auto 1fr auto;
         }
+    }
+
+    /* ===== Spotlight Button ===== */
+    .spotlight-btn {
+        opacity: 0.4;
+        transition: opacity 0.2s;
+        font-size: 0.9rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.1rem 0.3rem;
+    }
+
+    .spotlight-btn:hover {
+        opacity: 0.8;
+    }
+
+    .spotlight-btn.spotlight-active {
+        opacity: 1;
+        background: rgba(233, 69, 96, 0.2);
+        border-radius: 0.25rem;
+    }
+
+    /* ===== Poll Edit Modal ===== */
+    .poll-edit-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .poll-edit-modal {
+        background: #1a1a2e;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+        padding: 2rem;
+        width: 500px;
+        max-width: 90vw;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .poll-edit-modal h3 {
+        margin: 0 0 1.5rem;
+        font-size: 1.2rem;
+    }
+
+    .poll-edit-field {
+        margin-bottom: 1.25rem;
+    }
+
+    .poll-edit-field label {
+        display: block;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+        margin-bottom: 0.4rem;
+    }
+
+    .poll-edit-field input[type="text"] {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.5rem;
+        color: white;
+        font-size: 0.95rem;
+        box-sizing: border-box;
+    }
+
+    .poll-edit-option-row {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+        align-items: center;
+    }
+
+    .poll-edit-option-row input {
+        flex: 1;
+    }
+
+    .poll-edit-actions {
+        display: flex;
+        gap: 0.75rem;
+        justify-content: flex-end;
+        margin-top: 1.5rem;
     }
 </style>
