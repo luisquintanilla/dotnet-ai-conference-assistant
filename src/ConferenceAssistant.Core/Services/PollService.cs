@@ -38,9 +38,9 @@ public class PollService : IPollService
         }
     }
 
-    public Task<Poll> CreatePollAsync(string? topicId, string question, List<string> options, PollSource source = PollSource.Generated)
+    public Task<Poll> CreatePollAsync(string? topicId, string question, List<string> options, PollSource source = PollSource.Generated, bool allowOther = false)
     {
-        var poll = GetDefaultContext().CreatePoll(topicId, question, options, source);
+        var poll = GetDefaultContext().CreatePoll(topicId, question, options, source, allowOther);
         return Task.FromResult(poll);
     }
 
@@ -56,9 +56,9 @@ public class PollService : IPollService
         return Task.CompletedTask;
     }
 
-    public Task<PollResponse> SubmitResponseAsync(string pollId, string selectedOption, string? attendeeId = null)
+    public Task<PollResponse> SubmitResponseAsync(string pollId, string selectedOption, string? attendeeId = null, string? otherText = null)
     {
-        var response = GetDefaultContext().SubmitResponse(pollId, selectedOption, attendeeId);
+        var response = GetDefaultContext().SubmitResponse(pollId, selectedOption, attendeeId, otherText);
         return Task.FromResult(response);
     }
 
@@ -67,4 +67,5 @@ public class PollService : IPollService
     public IReadOnlyList<Poll> GetPollsForTopic(string topicId) => GetDefaultContext().GetPollsForTopic(topicId);
     public IReadOnlyList<PollResponse> GetResponsesForPoll(string pollId) => GetDefaultContext().GetResponsesForPoll(pollId);
     public Dictionary<string, int> GetPollResults(string pollId) => GetDefaultContext().GetPollResults(pollId);
+    public List<string> GetOtherResponses(string pollId) => GetDefaultContext().GetOtherResponses(pollId);
 }

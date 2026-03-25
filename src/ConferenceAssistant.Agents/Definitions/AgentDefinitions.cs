@@ -16,6 +16,8 @@ public static class AgentDefinitions
            - Has 3-5 clear, distinct options
            - Avoids yes/no questions
            - Considers what previous poll results revealed (use GetAllPollResults)
+           - Consider setting allowOther=true when the question might have answers beyond the provided options
+           - The "Other" option lets attendees provide free-text responses that are analyzed for themes
 
         Use CreatePoll to submit your poll. Always explain your reasoning before creating it.
         """;

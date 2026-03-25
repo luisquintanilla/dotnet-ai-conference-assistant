@@ -71,6 +71,7 @@ public class ConferenceDbContext : DbContext
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(p => p.Source).HasConversion<string>().HasMaxLength(20);
             e.Property(p => p.Options).HasColumnType("jsonb");
+            e.Property(p => p.AllowOther).HasDefaultValue(false);
         });
 
         // PollResponse
@@ -80,6 +81,7 @@ public class ConferenceDbContext : DbContext
             e.HasKey(r => r.Id);
             e.Property(r => r.PollId).HasMaxLength(50);
             e.Property(r => r.SelectedOption).HasMaxLength(500);
+            e.Property(r => r.OtherText).HasMaxLength(500);
         });
 
         // AudienceQuestion

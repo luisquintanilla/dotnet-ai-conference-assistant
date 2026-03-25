@@ -144,6 +144,10 @@ var app = builder.Build();
         );
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_ingestion_records_DocumentId_Source"
             ON ingestion_records ("DocumentId", "Source");
+
+        -- Add new columns to existing tables (safe for fresh + existing DBs)
+        ALTER TABLE polls ADD COLUMN IF NOT EXISTS "AllowOther" boolean NOT NULL DEFAULT false;
+        ALTER TABLE poll_responses ADD COLUMN IF NOT EXISTS "OtherText" varchar(500);
         """);
 }
 
@@ -208,7 +212,8 @@ sessionManager.SessionCreated += ctx =>
                 var results = ctx.GetPollResults(poll.Id);
                 if (results.Count > 0)
                 {
-                    await ingestionService.IngestResponseAsync(poll.Id, poll.TopicId ?? "", poll.Question, results);
+                    var otherResponses = ctx.GetOtherResponses(poll.Id);
+                    await ingestionService.IngestResponseAsync(poll.Id, poll.TopicId ?? "", poll.Question, results, otherResponses);
                     app.Logger.LogInformation("Ingested poll results for {PollId} into knowledge base", poll.Id);
                 }
                 await insightGen.GeneratePollInsightsAsync(poll.Id, ctx.Session.SessionCode);

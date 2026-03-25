@@ -41,7 +41,8 @@
             <div class="display-main">
                 @if (activePoll is not null)
                 {
-                    <PollResultsChart Poll="@activePoll" Results="@pollResults" />
+                    <PollResultsChart Poll="@activePoll" Results="@pollResults"
+                                      OtherResponses="@(activePoll.AllowOther ? sessionContext?.GetOtherResponses(activePoll.Id) : null)" />
                 }
                 else if (activeSlide is not null)
                 {

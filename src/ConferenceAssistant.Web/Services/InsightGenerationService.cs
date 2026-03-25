@@ -45,10 +45,19 @@ public class InsightGenerationService(
             }
             sb.AppendLine($"Total responses: {total}");
 
+            var otherResponses = ctx.GetOtherResponses(pollId);
+            if (otherResponses.Count > 0)
+            {
+                sb.AppendLine("\"Other\" responses from attendees:");
+                foreach (var text in otherResponses)
+                    sb.AppendLine($"  - \"{text}\"");
+            }
+
             var prompt = $"""
                 Analyze these live poll results from a conference session. Provide 1-2 short, 
                 actionable insights about what the audience thinks. Be specific and reference 
-                the actual numbers. Keep it under 3 sentences.
+                the actual numbers. If there are "Other" responses, identify themes or patterns 
+                in the free-text answers. Keep it under 3 sentences.
 
                 {sb}
                 """;

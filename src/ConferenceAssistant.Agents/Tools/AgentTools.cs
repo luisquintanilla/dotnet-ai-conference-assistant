@@ -59,7 +59,7 @@ public class AgentTools
         CreatePoll = AIFunctionFactory.Create(CreatePollCore, new AIFunctionFactoryOptions
         {
             Name = nameof(CreatePoll),
-            Description = "Create a new poll for the audience to vote on"
+            Description = "Create a new poll for the audience to vote on. Set allowOther=true to let attendees provide free-text responses beyond the listed options."
         });
         SaveInsight = AIFunctionFactory.Create(SaveInsightCore, new AIFunctionFactoryOptions
         {
@@ -106,9 +106,9 @@ public class AgentTools
             $"- {kv.Key}: {kv.Value} votes ({(total > 0 ? 100 * kv.Value / total : 0)}%)"));
     }
 
-    private async Task<string> CreatePollCore(string? topicId, string question, string[] options)
+    private async Task<string> CreatePollCore(string? topicId, string question, string[] options, bool allowOther = true)
     {
-        var poll = await _pollService.CreatePollAsync(topicId, question, options.ToList(), PollSource.Generated);
+        var poll = await _pollService.CreatePollAsync(topicId, question, options.ToList(), PollSource.Generated, allowOther);
         return $"Poll created with ID: {poll.Id}";
     }
 
@@ -158,6 +158,15 @@ public class AgentTools
                 sb.AppendLine($"## {poll.Question} (Topic: {topic.Title})");
                 foreach (var kv in results)
                     sb.AppendLine($"  - {kv.Key}: {kv.Value} ({(total > 0 ? 100 * kv.Value / total : 0)}%)");
+
+                var otherResponses = _pollService.GetOtherResponses(poll.Id);
+                if (otherResponses.Count > 0)
+                {
+                    sb.AppendLine("  \"Other\" responses:");
+                    foreach (var text in otherResponses)
+                        sb.AppendLine($"    - \"{text}\"");
+                }
+
                 sb.AppendLine();
             }
         }

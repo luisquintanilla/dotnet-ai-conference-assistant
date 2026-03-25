@@ -33,7 +33,7 @@ public class IngestionService : IIngestionService
     }
 
     public async Task<int> IngestResponseAsync(
-        string pollId, string topicId, string question, Dictionary<string, int> results)
+        string pollId, string topicId, string question, Dictionary<string, int> results, List<string>? otherResponses = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Poll: {question}");
@@ -43,6 +43,13 @@ public class IngestionService : IIngestionService
         {
             var percentage = total > 0 ? (count * 100.0 / total).ToString("F1") : "0";
             sb.AppendLine($"  - {option}: {count} votes ({percentage}%)");
+        }
+
+        if (otherResponses is { Count: > 0 })
+        {
+            sb.AppendLine("\"Other\" responses:");
+            foreach (var text in otherResponses)
+                sb.AppendLine($"  - \"{text}\"");
         }
 
         await _searchService.UpsertAsync(sb.ToString(), source: "response", documentId: $"response-{pollId}");

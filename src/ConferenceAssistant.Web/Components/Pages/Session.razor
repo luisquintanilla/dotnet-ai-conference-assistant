@@ -42,7 +42,7 @@
         <!-- Active Poll -->
         @if (activePoll is not null)
         {
-            <PollCard Poll="@activePoll" Results="@pollResults" OnVoteSubmitted="HandleVote" />
+            <PollCard Poll="@activePoll" Results="@pollResults" OnVoteSubmitted="HandleVote" AttendeeId="@attendeeId" />
         }
         else
         {
@@ -150,10 +150,10 @@
             pollResults = sessionContext?.GetPollResults(activePoll.Id);
     }
 
-    private void HandleVote(string option)
+    private void HandleVote((string Option, string? OtherText) vote)
     {
         if (activePoll is null || sessionContext is null) return;
-        sessionContext.SubmitResponse(activePoll.Id, option, attendeeId);
+        sessionContext.SubmitResponse(activePoll.Id, vote.Option, attendeeId, vote.OtherText);
         RefreshPollResults();
     }
 

@@ -169,13 +169,15 @@ public class SessionContext
         => AllSlides.Where(s => s.TopicId == topicId).ToList();
 
     // --- Poll Management ---
-    public Poll CreatePoll(string? topicId, string question, List<string> options, PollSource source = PollSource.Generated)
+    public Poll CreatePoll(string? topicId, string question, List<string> options,
+        PollSource source = PollSource.Generated, bool allowOther = false)
     {
         var poll = new Poll
         {
             TopicId = topicId,
             Question = question,
             Options = options,
+            AllowOther = allowOther,
             Source = source,
             Status = PollStatus.Draft
         };
@@ -207,7 +209,7 @@ public class SessionContext
         PollClosed?.Invoke(poll);
     }
 
-    public PollResponse SubmitResponse(string pollId, string selectedOption, string? attendeeId = null)
+    public PollResponse SubmitResponse(string pollId, string selectedOption, string? attendeeId = null, string? otherText = null)
     {
         if (!_polls.TryGetValue(pollId, out var poll))
             throw new ArgumentException($"Poll '{pollId}' not found.");
@@ -215,6 +217,7 @@ public class SessionContext
         {
             PollId = pollId,
             SelectedOption = selectedOption,
+            OtherText = selectedOption == "Other" ? otherText : null,
             AttendeeId = attendeeId
         };
         _responses.Add(response);
@@ -238,6 +241,8 @@ public class SessionContext
     {
         if (!_polls.TryGetValue(pollId, out var poll)) return new();
         var results = poll.Options.ToDictionary(o => o, _ => 0);
+        if (poll.AllowOther)
+            results["Other"] = 0;
         foreach (var r in _responses.Where(r => r.PollId == pollId))
         {
             if (results.ContainsKey(r.SelectedOption))
@@ -245,6 +250,12 @@ public class SessionContext
         }
         return results;
     }
+
+    public List<string> GetOtherResponses(string pollId)
+        => _responses
+            .Where(r => r.PollId == pollId && r.SelectedOption == "Other" && !string.IsNullOrWhiteSpace(r.OtherText))
+            .Select(r => r.OtherText!)
+            .ToList();
 
     // --- Question Management ---
     public AudienceQuestion SubmitQuestion(string text, string? topicId = null, string? attendeeId = null)

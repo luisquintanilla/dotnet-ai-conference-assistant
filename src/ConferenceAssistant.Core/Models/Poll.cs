@@ -6,6 +6,7 @@ public class Poll
     public string? TopicId { get; set; }
     public string Question { get; set; } = "";
     public List<string> Options { get; set; } = [];
+    public bool AllowOther { get; set; }
     public PollStatus Status { get; set; } = PollStatus.Draft;
     public PollSource Source { get; set; } = PollSource.Generated;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

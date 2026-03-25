@@ -318,6 +318,9 @@
                                 }
                                 <div class="custom-poll-actions">
                                     <button class="btn btn-sm" @onclick="AddCustomOption">+ Add Option</button>
+                                    <label class="allow-other-label">
+                                        <input type="checkbox" @bind="allowOtherOption" /> ☑ Allow 'Other' responses
+                                    </label>
                                     <button class="btn btn-sm btn-primary"
                                             disabled="@(!IsCustomPollValid)"
                                             @onclick="LaunchCustomPoll">
@@ -409,6 +412,27 @@
                                     <span class="poll-option-count">@count (@(pct)%)</span>
                                 </div>
                             }
+                            @if (activePoll.AllowOther)
+                            {
+                                var otherCount = activePollResults?.GetValueOrDefault("Other", 0) ?? 0;
+                                var total = activePollResults?.Values.Sum() ?? 0;
+                                var otherPct = total > 0 ? (int)(100.0 * otherCount / total) : 0;
+                                <div class="poll-option-bar">
+                                    <div class="poll-option-fill" style="width: @(otherPct)%"></div>
+                                    <span class="poll-option-label">Other</span>
+                                    <span class="poll-option-count">@otherCount (@(otherPct)%)</span>
+                                </div>
+                                var otherTexts = sessionContext?.GetOtherResponses(activePoll.Id);
+                                @if (otherTexts is not null && otherTexts.Count > 0)
+                                {
+                                    <div class="other-texts-inline">
+                                        @foreach (var t in otherTexts)
+                                        {
+                                            <span class="other-text-chip">"@t"</span>
+                                        }
+                                    </div>
+                                }
+                            }
                         </div>
                         @if (activePoll.Status == PollStatus.Draft)
                         {
@@ -425,7 +449,8 @@
                 {
                     <div class="closed-poll-results">
                         <h4>Last Poll Results: @closedPoll.Question</h4>
-                        <PollResultsChart Poll="@closedPoll" Results="@closedPollResults" />
+                        <PollResultsChart Poll="@closedPoll" Results="@closedPollResults"
+                                          OtherResponses="@(closedPoll.AllowOther ? sessionContext?.GetOtherResponses(closedPoll.Id) : null)" />
                     </div>
                 }
 
@@ -478,6 +503,7 @@
     private bool showCustomPollForm;
     private string customPollQuestion = "";
     private List<string> customPollOptions = ["", ""];
+    private bool allowOtherOption = true;
 
     // Question answering
     private string? answeringQuestionId;
@@ -744,7 +770,7 @@
         if (activeTopic is null) return; // Auto-generate requires a topic for suggested polls
         var suggested = activeTopic.SuggestedPolls.FirstOrDefault();
         if (suggested is null) return;
-        var poll = sessionContext.CreatePoll(activeTopic.Id, suggested.Question, suggested.Options, PollSource.Generated);
+        var poll = sessionContext.CreatePoll(activeTopic.Id, suggested.Question, suggested.Options, PollSource.Generated, allowOther: true);
         sessionContext.ActivatePoll(poll.Id);
         RefreshState();
     }
@@ -753,7 +779,7 @@
     {
         if (activeTopic is null || selectedSuggestedPollIndex < 0 || sessionContext is null) return;
         var sp = activeTopic.SuggestedPolls[selectedSuggestedPollIndex];
-        var poll = sessionContext.CreatePoll(activeTopic.Id, sp.Question, sp.Options, PollSource.Suggested);
+        var poll = sessionContext.CreatePoll(activeTopic.Id, sp.Question, sp.Options, PollSource.Suggested, allowOther: true);
         sessionContext.ActivatePoll(poll.Id);
         selectedSuggestedPollIndex = -1;
         RefreshState();
@@ -766,6 +792,7 @@
         {
             customPollQuestion = "";
             customPollOptions = ["", ""];
+            allowOtherOption = true;
         }
     }
 
@@ -791,7 +818,7 @@
     {
         if (!IsCustomPollValid || sessionContext is null) return;
         var options = customPollOptions.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList();
-        var poll = sessionContext.CreatePoll(activeTopic?.Id, customPollQuestion.Trim(), options, PollSource.Custom);
+        var poll = sessionContext.CreatePoll(activeTopic?.Id, customPollQuestion.Trim(), options, PollSource.Custom, allowOther: allowOtherOption);
         sessionContext.ActivatePoll(poll.Id);
         showCustomPollForm = false;
         RefreshState();
@@ -1527,6 +1554,17 @@
         display: flex;
         gap: 0.3rem;
         justify-content: flex-end;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .allow-other-label {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.7);
+        cursor: pointer;
     }
 
     /* ===== Right Column: Q&A + Polls + Insights ===== */
@@ -1725,6 +1763,24 @@
         font-size: 0.8rem;
         margin: 0 0 0.5rem;
         opacity: 0.7;
+    }
+
+    .other-texts-inline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        padding: 0.25rem 0;
+        max-height: 80px;
+        overflow-y: auto;
+    }
+
+    .other-text-chip {
+        font-size: 0.7rem;
+        font-style: italic;
+        color: rgba(255, 255, 255, 0.6);
+        background: rgba(255, 255, 255, 0.05);
+        padding: 0.15rem 0.4rem;
+        border-radius: 0.2rem;
     }
 
     /* ===== Insights Section ===== */
