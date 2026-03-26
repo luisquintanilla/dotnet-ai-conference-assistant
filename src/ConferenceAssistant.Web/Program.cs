@@ -194,6 +194,11 @@ sessionManager.SessionCreated += ctx =>
     {
         _ = Task.Run(async () =>
         {
+            if (!await questionAnswering.IsQuestionSafeAsync(q.Text))
+            {
+                app.Logger.LogWarning("Question {QuestionId} flagged as inappropriate — skipping AI answer", q.Id);
+                return;
+            }
             var answer = await questionAnswering.GenerateAiAnswerTextAsync(q.Text, q.TopicId);
             if (!string.IsNullOrWhiteSpace(answer))
             {
@@ -276,6 +281,11 @@ sessionManager.SessionCreated += ctx =>
         {
             try
             {
+                if (!await questionAnswering.IsQuestionSafeAsync(q.Text))
+                {
+                    app.Logger.LogWarning("Question {QuestionId} flagged as inappropriate — skipping ingestion", q.Id);
+                    return;
+                }
                 await ingestionService.IngestQuestionAsync(q.Id, q.Text, q.TopicId);
                 app.Logger.LogInformation("Ingested question {QuestionId} into knowledge base", q.Id);
 

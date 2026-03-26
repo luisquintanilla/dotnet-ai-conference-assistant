@@ -11,7 +11,7 @@ public class PollGenerationWorkflow(IChatClient chatClient, AgentTools tools)
         var options = new ChatOptions
         {
             Tools = [tools.GetCurrentTopic, tools.SearchKnowledge, tools.GetAudienceQuestions,
-                     tools.GetAllPollResults, tools.CreatePoll]
+                     tools.GetAllPollResults, tools.GetAllInsights, tools.CreatePoll]
         };
 
         var messages = new List<ChatMessage>

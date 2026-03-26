@@ -25,6 +25,32 @@ public class QuestionAnsweringService(
     /// Generates AI answer text without storing it. Callers that already have the correct
     /// SessionContext should use this and call ctx.AnswerQuestion() directly.
     /// </summary>
+    public async Task<bool> IsQuestionSafeAsync(string questionText)
+    {
+        try
+        {
+            var response = await chatClient.GetResponseAsync(
+            [
+                new(ChatRole.System, """
+                    You are a content safety filter for a professional conference Q&A system.
+                    Evaluate whether the following question is appropriate.
+                    A question is INAPPROPRIATE if it contains: hate speech, harassment, explicit sexual content,
+                    threats of violence, personally identifiable information requests, or is clearly spam/gibberish.
+                    A question IS appropriate even if it's off-topic, critical, or challenging — those are fine in a conference setting.
+                    Reply with exactly one word: SAFE or UNSAFE
+                    """),
+                new(ChatRole.User, questionText)
+            ]);
+
+            var result = response.Text?.Trim().ToUpperInvariant() ?? "SAFE";
+            return result.Contains("SAFE") && !result.Contains("UNSAFE");
+        }
+        catch
+        {
+            return true; // Fail open — don't block questions if the safety check itself fails
+        }
+    }
+
     public async Task<string?> GenerateAiAnswerTextAsync(string questionText, string? topicId = null)
     {
         try

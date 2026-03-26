@@ -28,6 +28,7 @@ public class SessionContext
     public event Action<AudienceQuestion>? QuestionReceived;
     public event Action<AudienceQuestion>? QuestionAnswered;
     public event Action<AudienceQuestion>? QuestionUpvoted;
+    public event Action<AudienceQuestion>? QuestionRemoved;
     public event Action<Insight>? InsightGenerated;
     public event Action<bool>? SlidesVisibilityChanged;
     public event Action<AudienceQuestion?>? QuestionSpotlighted;
@@ -308,6 +309,14 @@ public class SessionContext
         if (!_questions.TryGetValue(questionId, out var question)) return;
         question.Upvotes++;
         QuestionUpvoted?.Invoke(question);
+    }
+
+    public void RemoveQuestion(string questionId)
+    {
+        if (!_questions.TryRemove(questionId, out var question)) return;
+        if (SpotlightedQuestion?.Id == questionId)
+            SpotlightQuestion(null);
+        QuestionRemoved?.Invoke(question);
     }
 
     public IReadOnlyList<AudienceQuestion> GetQuestionsForTopic(string topicId)

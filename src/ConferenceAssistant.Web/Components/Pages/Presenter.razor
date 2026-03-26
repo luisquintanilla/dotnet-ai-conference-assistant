@@ -360,6 +360,7 @@
                                             title="@(sessionContext?.SpotlightedQuestion?.Id == q.Id ? "Remove from display" : "Show on display")">
                                         📺
                                     </button>
+                                    <button class="btn-icon delete-btn" @onclick="() => DeleteQuestion(q.Id)" title="Remove question">🗑️</button>
                                     @if (!string.IsNullOrEmpty(q.TopicId))
                                     {
                                         var qTopic = session?.Topics.FirstOrDefault(t => t.Id == q.TopicId);
@@ -605,6 +606,7 @@
     private Action<Insight>? onInsightGenerated;
     private Action<bool>? onSlidesVisibilityChanged;
     private Action<AudienceQuestion?>? onQuestionSpotlighted;
+    private Action<AudienceQuestion>? onQuestionRemoved;
     private Timer? _knowledgeBaseTimer;
 
     protected override void OnInitialized()
@@ -665,6 +667,9 @@
         onQuestionSpotlighted = _ => InvokeAsync(StateHasChanged);
         sessionContext.QuestionSpotlighted += onQuestionSpotlighted;
 
+        onQuestionRemoved = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
+        sessionContext.QuestionRemoved += onQuestionRemoved;
+
         slidesHidden = sessionContext.SlidesHidden;
 
         // Periodic refresh of knowledge base count (catches background ingestion)
@@ -690,6 +695,7 @@
             sessionContext.SlideChanged -= onSlideChanged;
             sessionContext.SlidesVisibilityChanged -= onSlidesVisibilityChanged;
             sessionContext.QuestionSpotlighted -= onQuestionSpotlighted;
+            sessionContext.QuestionRemoved -= onQuestionRemoved;
         }
     }
 
@@ -786,6 +792,12 @@
             topicQuestions = sessionContext?.GetQuestionsForTopic(activeTopic.Id) ?? [];
         else
             topicQuestions = [];
+    }
+
+    private void DeleteQuestion(string questionId)
+    {
+        sessionContext?.RemoveQuestion(questionId);
+        RefreshQuestions();
     }
 
     private void RefreshInsights()
@@ -1816,6 +1828,21 @@
 
     .btn-answer:hover {
         opacity: 1;
+    }
+
+    .delete-btn {
+        opacity: 0.4;
+        transition: opacity 0.2s;
+        font-size: 0.9rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.1rem 0.3rem;
+    }
+
+    .delete-btn:hover {
+        opacity: 1;
+        color: #e94560;
     }
 
     /* ===== Right Poll Section ===== */

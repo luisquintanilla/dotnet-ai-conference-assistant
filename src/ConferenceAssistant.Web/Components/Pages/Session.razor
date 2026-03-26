@@ -97,6 +97,7 @@
     private Action<AudienceQuestion>? onQuestionReceived;
     private Action<AudienceQuestion>? onQuestionAnswered;
     private Action<AudienceQuestion>? onQuestionUpvoted;
+    private Action<AudienceQuestion>? onQuestionRemoved;
 
     protected override void OnInitialized()
     {
@@ -112,6 +113,7 @@
         onQuestionReceived = _ => InvokeAsync(() => { questions = sessionContext?.GetTopQuestions(10) ?? []; StateHasChanged(); });
         onQuestionAnswered = _ => InvokeAsync(() => { questions = sessionContext?.GetTopQuestions(10) ?? []; StateHasChanged(); });
         onQuestionUpvoted = _ => InvokeAsync(() => { questions = sessionContext?.GetTopQuestions(10) ?? []; StateHasChanged(); });
+        onQuestionRemoved = _ => InvokeAsync(() => { questions = sessionContext?.GetTopQuestions(10) ?? []; StateHasChanged(); });
 
         sessionContext.PollActivated += onPollActivated;
         sessionContext.PollClosed += onPollClosed;
@@ -119,6 +121,7 @@
         sessionContext.QuestionReceived += onQuestionReceived;
         sessionContext.QuestionAnswered += onQuestionAnswered;
         sessionContext.QuestionUpvoted += onQuestionUpvoted;
+        sessionContext.QuestionRemoved += onQuestionRemoved;
     }
 
     public void Dispose()
@@ -131,6 +134,7 @@
             sessionContext.QuestionReceived -= onQuestionReceived;
             sessionContext.QuestionAnswered -= onQuestionAnswered;
             sessionContext.QuestionUpvoted -= onQuestionUpvoted;
+            sessionContext.QuestionRemoved -= onQuestionRemoved;
         }
     }
 
