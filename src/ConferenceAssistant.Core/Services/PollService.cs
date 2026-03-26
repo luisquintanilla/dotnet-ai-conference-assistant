@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ConferenceAssistant.Core.Models;
 
 namespace ConferenceAssistant.Core.Services;
@@ -6,7 +7,7 @@ public class PollService : IPollService
 {
     private readonly ISessionManager _sessionManager;
     private readonly ISessionService _sessionService;
-    private readonly HashSet<string> _wiredSessions = [];
+    private readonly ConcurrentDictionary<string, byte> _wiredSessions = new();
 
     public event Action<Poll>? PollActivated;
     public event Action<Poll>? PollClosed;
@@ -30,7 +31,7 @@ public class PollService : IPollService
 
     private void EnsureEventsWired(SessionContext ctx)
     {
-        if (_wiredSessions.Add(ctx.Session.SessionCode))
+        if (_wiredSessions.TryAdd(ctx.Session.SessionCode, 0))
         {
             ctx.PollActivated += p => PollActivated?.Invoke(p);
             ctx.PollClosed += p => PollClosed?.Invoke(p);

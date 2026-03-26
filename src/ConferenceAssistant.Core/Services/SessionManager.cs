@@ -44,7 +44,7 @@ public class SessionManager : ISessionManager
         var seedData = JsonSerializer.Deserialize<SeedSessionData>(seedJson, JsonOptions)
             ?? throw new InvalidOperationException("Failed to deserialize seed data.");
 
-        var code = sessionCodeOverride ?? NormalizeCode(seedData.SessionId);
+        var code = sessionCodeOverride is not null ? NormalizeCode(sessionCodeOverride) : NormalizeCode(seedData.SessionId);
 
         if (_sessions.ContainsKey(code))
             throw new InvalidOperationException($"Session with code '{code}' already exists.");

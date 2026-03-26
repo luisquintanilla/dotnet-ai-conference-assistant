@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ConferenceAssistant.Core.Models;
 
 namespace ConferenceAssistant.Core.Services;
@@ -6,7 +7,7 @@ public class InsightService : IInsightService
 {
     private readonly ISessionManager _sessionManager;
     private readonly ISessionService _sessionService;
-    private readonly HashSet<string> _wiredSessions = [];
+    private readonly ConcurrentDictionary<string, byte> _wiredSessions = new();
 
     public event Action<Insight>? InsightGenerated;
 
@@ -28,7 +29,7 @@ public class InsightService : IInsightService
 
     private void EnsureEventsWired(SessionContext ctx)
     {
-        if (_wiredSessions.Add(ctx.Session.SessionCode))
+        if (_wiredSessions.TryAdd(ctx.Session.SessionCode, 0))
         {
             ctx.InsightGenerated += i => InsightGenerated?.Invoke(i);
         }

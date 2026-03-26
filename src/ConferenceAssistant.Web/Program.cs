@@ -196,9 +196,24 @@ sessionManager.SessionCreated += ctx =>
         {
             if (!await questionAnswering.IsQuestionSafeAsync(q.Text))
             {
-                app.Logger.LogWarning("Question {QuestionId} flagged as inappropriate — skipping AI answer", q.Id);
+                app.Logger.LogWarning("Question {QuestionId} flagged as inappropriate — hidden from attendees", q.Id);
+                ctx.MarkQuestionUnsafe(q.Id);
                 return;
             }
+            var answer = await questionAnswering.GenerateAiAnswerTextAsync(q.Text, q.TopicId);
+            if (!string.IsNullOrWhiteSpace(answer))
+            {
+                ctx.AnswerQuestion(q.Id, answer, isAiGenerated: true, authorLabel: "AI");
+            }
+        });
+    };
+
+    // When presenter approves an unsafe question, generate AI answer
+    ctx.QuestionModerated += q =>
+    {
+        if (!q.IsApprovedByPresenter) return;
+        _ = Task.Run(async () =>
+        {
             var answer = await questionAnswering.GenerateAiAnswerTextAsync(q.Text, q.TopicId);
             if (!string.IsNullOrWhiteSpace(answer))
             {

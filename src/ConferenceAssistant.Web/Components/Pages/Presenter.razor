@@ -12,6 +12,8 @@
 @inject IContentImportService ContentImportService
 @inject ISessionPersistenceService PersistenceService
 @inject ISlideGenerationService SlideGenerationService
+@inject ConferenceAssistant.Agents.Workflows.PollGenerationWorkflow PollGenerationWorkflow
+@inject IQuestionAnsweringService QuestionAnsweringService
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
 
@@ -279,7 +281,16 @@
                     <div class="poll-launch-zone">
                         @if (activeTopic is not null)
                         {
-                            <button class="btn btn-outline btn-sm" @onclick="AutoGeneratePoll">🤖 Auto-Generate Poll</button>
+                            <button class="btn btn-outline btn-sm" @onclick="AutoGeneratePoll" disabled="@isGeneratingPoll">
+                                @if (isGeneratingPoll)
+                                {
+                                    <span>⏳ Generating...</span>
+                                }
+                                else
+                                {
+                                    <span>🤖 Auto-Generate Poll</span>
+                                }
+                            </button>
                         }
 
                         @if (activeTopic?.SuggestedPolls.Count > 0)
@@ -351,10 +362,24 @@
                     {
                         @foreach (var q in allQuestions)
                         {
-                            <div class="question-item">
+                            <div class="question-item @(!q.IsSafe && !q.IsApprovedByPresenter ? "question-unsafe" : "") @(!q.IsSafe && q.IsApprovedByPresenter ? "question-approved" : "")">
                                 <div class="question-header">
                                     <span class="upvote-count">👍 @q.Upvotes</span>
+                                    @if (!q.IsSafe && !q.IsApprovedByPresenter)
+                                    {
+                                        <span class="unsafe-badge">⚠️ Unsafe</span>
+                                    }
+                                    else if (!q.IsSafe && q.IsApprovedByPresenter)
+                                    {
+                                        <span class="approved-badge">✅ Approved</span>
+                                    }
                                     <span class="question-text">@q.Text</span>
+                                    @if (!q.IsSafe && !q.IsApprovedByPresenter)
+                                    {
+                                        <button class="btn-icon approve-btn" @onclick="() => ApproveQuestion(q.Id)" title="Approve and show to attendees">
+                                            ✅
+                                        </button>
+                                    }
                                     <button class="btn-icon spotlight-btn @(sessionContext?.SpotlightedQuestion?.Id == q.Id ? "spotlight-active" : "")"
                                             @onclick="() => ToggleSpotlight(q.Id)"
                                             title="@(sessionContext?.SpotlightedQuestion?.Id == q.Id ? "Remove from display" : "Show on display")">
@@ -553,6 +578,7 @@
     private string customPollQuestion = "";
     private List<string> customPollOptions = ["", ""];
     private bool allowOtherOption = true;
+    private bool isGeneratingPoll;
 
     // Question answering
     private string? answeringQuestionId;
@@ -607,6 +633,7 @@
     private Action<bool>? onSlidesVisibilityChanged;
     private Action<AudienceQuestion?>? onQuestionSpotlighted;
     private Action<AudienceQuestion>? onQuestionRemoved;
+    private Action<AudienceQuestion>? onQuestionModerated;
     private Timer? _knowledgeBaseTimer;
 
     protected override void OnInitialized()
@@ -670,6 +697,9 @@
         onQuestionRemoved = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
         sessionContext.QuestionRemoved += onQuestionRemoved;
 
+        onQuestionModerated = _ => InvokeAsync(() => { RefreshQuestions(); StateHasChanged(); });
+        sessionContext.QuestionModerated += onQuestionModerated;
+
         slidesHidden = sessionContext.SlidesHidden;
 
         // Periodic refresh of knowledge base count (catches background ingestion)
@@ -696,6 +726,7 @@
             sessionContext.SlidesVisibilityChanged -= onSlidesVisibilityChanged;
             sessionContext.QuestionSpotlighted -= onQuestionSpotlighted;
             sessionContext.QuestionRemoved -= onQuestionRemoved;
+            sessionContext.QuestionModerated -= onQuestionModerated;
         }
     }
 
@@ -754,7 +785,7 @@
             closedPollResults = sessionContext.GetPollResults(previousPoll.Id);
         }
 
-        allQuestions = sessionContext.GetTopQuestions(50);
+        allQuestions = sessionContext.GetTopQuestions(50, includeUnsafe: true);
 
         if (activeTopic is not null)
         {
@@ -787,7 +818,7 @@
 
     private void RefreshQuestions()
     {
-        allQuestions = sessionContext?.GetTopQuestions(50) ?? [];
+        allQuestions = sessionContext?.GetTopQuestions(50, includeUnsafe: true) ?? [];
         if (activeTopic is not null)
             topicQuestions = sessionContext?.GetQuestionsForTopic(activeTopic.Id) ?? [];
         else
@@ -797,6 +828,12 @@
     private void DeleteQuestion(string questionId)
     {
         sessionContext?.RemoveQuestion(questionId);
+        RefreshQuestions();
+    }
+
+    private void ApproveQuestion(string questionId)
+    {
+        sessionContext?.ApproveQuestion(questionId);
         RefreshQuestions();
     }
 
@@ -848,14 +885,49 @@
 
     private async Task AutoGeneratePoll()
     {
-        if (sessionContext is null || activeTopic is null) return;
-        var suggested = activeTopic.SuggestedPolls.FirstOrDefault();
-        if (suggested is null) return;
-        editPollQuestion = suggested.Question;
-        editPollOptions = new List<string>(suggested.Options);
-        editAllowOther = true;
-        editPollSource = PollSource.Generated;
-        showPollEditModal = true;
+        if (sessionContext is null || activeTopic is null || isGeneratingPoll) return;
+        isGeneratingPoll = true;
+        StateHasChanged();
+
+        try
+        {
+            // Capture existing draft poll IDs so we can find the newly created one
+            var existingPollIds = sessionContext.GetPollsForTopic(activeTopic.Id)
+                .Select(p => p.Id).ToHashSet();
+
+            await PollGenerationWorkflow.ExecuteAsync(activeTopic.Id);
+
+            // Find the newly created draft poll
+            var newPoll = sessionContext.GetPollsForTopic(activeTopic.Id)
+                .FirstOrDefault(p => p.Status == PollStatus.Draft && !existingPollIds.Contains(p.Id));
+
+            if (newPoll is not null)
+            {
+                editPollQuestion = newPoll.Question;
+                editPollOptions = new List<string>(newPoll.Options);
+                editAllowOther = newPoll.AllowOther;
+                editPollSource = PollSource.Generated;
+                showPollEditModal = true;
+            }
+            else
+            {
+                // Fallback: if the workflow didn't create a poll via tool, use suggested poll
+                var suggested = activeTopic.SuggestedPolls.FirstOrDefault();
+                if (suggested is not null)
+                {
+                    editPollQuestion = suggested.Question;
+                    editPollOptions = new List<string>(suggested.Options);
+                    editAllowOther = true;
+                    editPollSource = PollSource.Generated;
+                    showPollEditModal = true;
+                }
+            }
+        }
+        finally
+        {
+            isGeneratingPoll = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private void LaunchSelectedSuggestedPoll()
@@ -1737,6 +1809,49 @@
         padding: 0.5rem 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         font-size: 0.8rem;
+    }
+
+    .question-item.question-unsafe {
+        background: rgba(255, 100, 50, 0.08);
+        border-left: 3px solid rgba(255, 100, 50, 0.6);
+        padding-left: 0.5rem;
+        border-radius: 0.25rem;
+    }
+
+    .question-item.question-approved {
+        border-left: 3px solid rgba(78, 205, 196, 0.5);
+        padding-left: 0.5rem;
+        border-radius: 0.25rem;
+    }
+
+    .unsafe-badge {
+        display: inline-block;
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 0.1rem 0.35rem;
+        background: rgba(255, 100, 50, 0.25);
+        color: #ff6432;
+        border-radius: 0.25rem;
+        white-space: nowrap;
+    }
+
+    .approved-badge {
+        display: inline-block;
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 0.1rem 0.35rem;
+        background: rgba(78, 205, 196, 0.2);
+        color: #4ecdc4;
+        border-radius: 0.25rem;
+        white-space: nowrap;
+    }
+
+    .approve-btn {
+        color: #4ecdc4 !important;
+    }
+
+    .approve-btn:hover {
+        background: rgba(78, 205, 196, 0.15) !important;
     }
 
     .question-item:last-child {

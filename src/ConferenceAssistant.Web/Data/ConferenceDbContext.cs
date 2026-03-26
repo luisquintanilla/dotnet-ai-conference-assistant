@@ -90,6 +90,9 @@ public class ConferenceDbContext : DbContext
             e.ToTable("audience_questions");
             e.HasKey(q => q.Id);
             e.Property<string>("SessionId").HasMaxLength(50);
+            e.Property(q => q.IsSafe).HasDefaultValue(true);
+            e.Property(q => q.IsApprovedByPresenter).HasDefaultValue(false);
+            e.Ignore(q => q.IsVisibleToAttendees);
             e.HasMany(q => q.Answers).WithOne().HasForeignKey("QuestionId").OnDelete(DeleteBehavior.Cascade);
         });
 

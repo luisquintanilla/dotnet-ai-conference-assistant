@@ -29,6 +29,7 @@ public class SessionContext
     public event Action<AudienceQuestion>? QuestionAnswered;
     public event Action<AudienceQuestion>? QuestionUpvoted;
     public event Action<AudienceQuestion>? QuestionRemoved;
+    public event Action<AudienceQuestion>? QuestionModerated;
     public event Action<Insight>? InsightGenerated;
     public event Action<bool>? SlidesVisibilityChanged;
     public event Action<AudienceQuestion?>? QuestionSpotlighted;
@@ -319,11 +320,29 @@ public class SessionContext
         QuestionRemoved?.Invoke(question);
     }
 
+    public void MarkQuestionUnsafe(string questionId)
+    {
+        if (!_questions.TryGetValue(questionId, out var question)) return;
+        question.IsSafe = false;
+        QuestionModerated?.Invoke(question);
+    }
+
+    public void ApproveQuestion(string questionId)
+    {
+        if (!_questions.TryGetValue(questionId, out var question)) return;
+        question.IsApprovedByPresenter = true;
+        QuestionModerated?.Invoke(question);
+    }
+
     public IReadOnlyList<AudienceQuestion> GetQuestionsForTopic(string topicId)
         => _questions.Values.Where(q => q.TopicId == topicId).ToList();
 
-    public IReadOnlyList<AudienceQuestion> GetTopQuestions(int count = 10)
-        => _questions.Values.OrderByDescending(q => q.Upvotes).Take(count).ToList();
+    public IReadOnlyList<AudienceQuestion> GetTopQuestions(int count = 10, bool includeUnsafe = false)
+        => _questions.Values
+            .Where(q => includeUnsafe || q.IsVisibleToAttendees)
+            .OrderByDescending(q => q.Upvotes)
+            .Take(count)
+            .ToList();
 
     // --- Insight Management ---
     public Insight AddInsight(Insight insight)

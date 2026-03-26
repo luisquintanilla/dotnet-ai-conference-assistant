@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ConferenceAssistant.Core.Models;
 
 namespace ConferenceAssistant.Core.Services;
@@ -6,7 +7,7 @@ public class QuestionService : IQuestionService
 {
     private readonly ISessionManager _sessionManager;
     private readonly ISessionService _sessionService;
-    private readonly HashSet<string> _wiredSessions = [];
+    private readonly ConcurrentDictionary<string, byte> _wiredSessions = new();
 
     public event Action<AudienceQuestion>? QuestionReceived;
     public event Action<AudienceQuestion>? QuestionAnswered;
@@ -30,7 +31,7 @@ public class QuestionService : IQuestionService
 
     private void EnsureEventsWired(SessionContext ctx)
     {
-        if (_wiredSessions.Add(ctx.Session.SessionCode))
+        if (_wiredSessions.TryAdd(ctx.Session.SessionCode, 0))
         {
             ctx.QuestionReceived += q => QuestionReceived?.Invoke(q);
             ctx.QuestionAnswered += q => QuestionAnswered?.Invoke(q);
