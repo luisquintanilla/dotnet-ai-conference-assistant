@@ -1,120 +1,143 @@
 {
-  "sessionId": "DOTNETAI-CONF",
-  "title": "The Microsoft AI Stack for .NET",
-  "description": "A living presentation powered by AI agents, real-time polls, and the full Microsoft AI stack for .NET.",
+  "sessionId": "AGENTS-GUIDE",
+  "title": "The .NET Developer's Guide to AI Agents",
+  "description": "Explore the .NET AI ecosystem from MEAI primitives to agent frameworks, and learn how to build production-ready agentic applications with confidence.",
   "topics": [
     {
-      "id": "meai",
-      "title": "Microsoft.Extensions.AI",
-      "description": "The abstraction layer everything speaks through — IChatClient, IEmbeddingGenerator, ChatClientBuilder, AIFunctionFactory",
+      "id": "ecosystem",
+      "title": "The .NET AI Ecosystem",
+      "description": "Understanding the landscape - from MEAI primitives to agent frameworks, Copilot extensibility, and where .NET developers are actually starting.",
       "order": 1,
       "talkingPoints": [
-        "IChatClient — provider-agnostic LLM calls",
-        "IEmbeddingGenerator — embeddings for search and ingestion",
-        "ChatClientBuilder — composable middleware pipeline",
-        "AIFunctionFactory.Create() — tool definitions for agents",
-        "One interface, any provider, middleware for cross-cutting concerns"
+        "Microsoft.Extensions.AI as the provider-agnostic foundation",
+        "IChatClient and IEmbeddingGenerator abstractions",
+        "The spectrum from raw APIs to full agent frameworks",
+        "Where .NET developers are entering the AI space today",
+        "First experiences and onboarding paths"
       ],
       "suggestedPolls": [
         {
-          "question": "What's your experience level with AI in .NET?",
-          "options": ["Just getting started", "Built a prototype", "Running in production", "Teaching others"]
+          "question": "Which .NET AI entry point are you using most today?",
+          "options": ["Microsoft Agent Framework", "Microsoft.Extensions.AI (MEAI) primitives", "MCP servers / tools", "GitHub Copilot agents / skills", "Non-Microsoft agent framework (LangChain, AutoGen, etc.)", "Not building AI features in .NET today"]
         },
         {
-          "question": "Which AI provider do you primarily use?",
-          "options": ["Azure OpenAI", "OpenAI directly", "Local models (Ollama)", "Haven't decided yet"]
+          "question": "When you first started building AI features in .NET, what did you start with?",
+          "options": ["A full agent framework", "Low-level model / prompt APIs", "Copilot customization", "A sample or template", "I haven't started yet"]
         }
       ]
     },
     {
-      "id": "knowledge",
-      "title": "Knowledge Engineering",
-      "description": "DataIngestion pipelines and VectorData stores — turning raw content into searchable, semantic knowledge",
+      "id": "scenarios",
+      "title": "Scenarios & Decision Clarity",
+      "description": "Matching real workloads to the right tools - when to reach for MAF vs MEAI vs MCP, and cutting through the confusion.",
       "order": 2,
       "talkingPoints": [
-        "IngestionPipeline — 5-stage document processing",
-        "Readers, Chunkers, and Enrichers",
-        "InMemoryVectorStore — zero-infrastructure vector search",
-        "VectorStoreCollection with auto-embedding",
-        "The living knowledge base that grows during the session"
+        "Background automation vs interactive chat vs tool-driven agents",
+        "RAG patterns for grounding AI in real data",
+        "Tool calling as the bridge between AI reasoning and your code",
+        "The \"when to use what\" decision framework",
+        "Common confusion points and how to resolve them"
       ],
       "suggestedPolls": [
         {
-          "question": "What's the hardest part of building RAG applications?",
-          "options": ["Chunking strategy", "Embedding quality", "Retrieval relevance", "Cost management"]
+          "question": "Which scenario best matches your primary AI use case in .NET?",
+          "options": ["Background automation / workflows", "Interactive chat or assistant", "Tool-driven agent (APIs, data, actions)", "Copilot extension or IDE workflow", "Experimentation / learning only"]
         },
         {
-          "question": "Where do you store your vectors today?",
-          "options": ["Azure AI Search", "Qdrant/Pinecone/etc.", "In-memory for dev", "Haven't started yet"]
+          "question": "How clear is it today when to choose MAF vs MEAI vs MCP?",
+          "options": ["Very clear", "Somewhat clear", "Unclear", "Actively confusing", "I don't know the difference"]
         }
       ]
     },
     {
-      "id": "agents",
-      "title": "Agentic AI",
-      "description": "The Microsoft Agent Framework — ChatClientAgent, tools, and AgentWorkflowBuilder for multi-agent orchestration",
+      "id": "frameworks",
+      "title": "Agent Frameworks & Value",
+      "description": "What agent frameworks actually deliver - tool orchestration, state management, production guardrails - and where friction still exists.",
       "order": 3,
       "talkingPoints": [
-        "ChatClientAgent — agents with tools and instructions",
-        "AgentWorkflowBuilder — sequential, handoff, group chat",
-        "Tool calling via AIFunctionFactory integration",
-        "Multi-agent collaboration patterns",
-        "The snowball effect — agents get smarter as the KB grows"
+        "ChatClientAgent and the Microsoft Agent Framework",
+        "Tool orchestration via AIFunctionFactory",
+        "Memory, state management, and conversation history",
+        "Streaming and intermediate results",
+        "The tension between opinionated and flexible frameworks"
       ],
       "suggestedPolls": [
         {
-          "question": "Which agent pattern would you use first in your projects?",
-          "options": ["Single agent with tools", "Sequential pipeline", "Multi-agent collaboration", "Not sure yet"]
+          "question": "What is the primary value you get from an agent framework in .NET?",
+          "options": ["Tool orchestration", "Memory / state management", "Streaming and intermediate results", "Production guardrails (auth, safety, identity)", "I don't see clear value yet"]
         },
         {
-          "question": "What's your biggest concern about agentic AI?",
-          "options": ["Reliability/hallucinations", "Cost of LLM calls", "Debugging complexity", "Security/safety"]
+          "question": "What is the biggest downside of current agent frameworks in .NET?",
+          "options": ["Too many concepts to learn", "Hard to debug", "Too opinionated", "Not opinionated enough", "Doesn't integrate well with existing apps"]
         }
       ]
     },
     {
-      "id": "mcp",
-      "title": "Interoperability with MCP",
-      "description": "Model Context Protocol — exposing tools as an MCP server and consuming external knowledge as an MCP client",
+      "id": "production",
+      "title": "Production Readiness",
+      "description": "What blocks real deployment - reliability, observability, security, cost control - and building trust in agentic systems.",
       "order": 4,
       "talkingPoints": [
-        "MCP server — expose your app's capabilities to any AI client",
-        "MCP client — consume external tools and knowledge",
-        "Streamable HTTP transport for web scenarios",
-        "Tool discovery and invocation protocol",
-        "The ecosystem effect — composable AI capabilities"
+        "Observability with OpenTelemetry integration",
+        "Debugging agent behavior and tool call chains",
+        "Security, compliance, and content safety",
+        "Cost management and token optimization",
+        "The gap between demos and production"
       ],
       "suggestedPolls": [
         {
-          "question": "What excites you most about MCP?",
-          "options": ["Universal tool sharing", "IDE/Copilot integration", "Cross-platform interop", "Building composable AI services"]
+          "question": "What most limits you from shipping agentic features to production?",
+          "options": ["Reliability and determinism", "Observability and debugging", "Security / compliance", "Cost control", "Lack of guidance or patterns"]
         },
         {
-          "question": "How would you first use MCP in your projects?",
-          "options": ["Expose internal APIs as tools", "Connect to external knowledge", "Build Copilot extensions", "Integrate with existing agents"]
+          "question": "How confident are you deploying agentic .NET apps to production today?",
+          "options": ["Very confident", "Somewhat confident", "Unsure", "Not confident", "Would not attempt it"]
         }
       ]
     },
     {
-      "id": "closer",
-      "title": "The Closer",
-      "description": "Full stack cascade — every technology exercised in one command via Copilot CLI connected to our MCP server",
+      "id": "interop",
+      "title": "Ecosystem & Interoperability",
+      "description": ".NET's role in the broader agentic ecosystem - MCP, cross-framework protocols, and strategic positioning.",
       "order": 5,
       "talkingPoints": [
-        "Copilot CLI connected to our MCP server",
-        "generate_session_summary triggers the full agent workflow",
-        "The technology cascade visualization on the big screen",
-        "One command, five technologies, zero custom client code",
-        "Resources and next steps"
+        "Model Context Protocol for universal tool sharing",
+        "MCP server and client patterns in .NET",
+        "Cross-framework interoperability (AG-UI, shared protocols)",
+        ".NET as first-class agent platform vs primitives provider",
+        "The composable AI ecosystem vision"
       ],
       "suggestedPolls": [
         {
-          "question": "Which technology from today will you explore first?",
-          "options": ["Microsoft.Extensions.AI", "DataIngestion + VectorData", "Agent Framework", "MCP"]
+          "question": "Which statement best reflects your expectation of .NET's role in agentic apps?",
+          "options": [".NET should lead with a first-class agent framework", ".NET should provide primitives that frameworks build on", ".NET should focus on Copilot extensibility", ".NET should stay framework-agnostic", "Unsure"]
         },
         {
-          "question": "Rate this session format (AI-powered, no slides):",
-          "options": ["Loved it — do more of this!", "Interesting experiment", "Prefer traditional slides", "Mixed feelings"]
+          "question": "How important is cross-framework interoperability (e.g., AG-UI, shared protocols)?",
+          "options": ["Critical", "Important", "Nice to have", "Not important", "Unsure"]
+        }
+      ]
+    },
+    {
+      "id": "priorities",
+      "title": "Priorities & Next Steps",
+      "description": "Force-ranking what matters most - guidance, tooling, samples, or simplification - to shape the near-term roadmap.",
+      "order": 6,
+      "talkingPoints": [
+        "Clear \"when to use what\" guidance as the top ask",
+        "End-to-end reference applications",
+        "Debugging and observability tooling gaps",
+        "Simplifying the mental model",
+        "What would most accelerate adoption"
+      ],
+      "suggestedPolls": [
+        {
+          "question": "If we could improve one thing in the next 6 months, what should it be?",
+          "options": ["Clear \"when to use what\" guidance", "Better templates and samples", "Debugging and observability tooling", "Simpler mental model / fewer concepts", "Stronger production defaults"]
+        },
+        {
+          "question": "What would most accelerate your adoption of agentic .NET?",
+          "options": ["End-to-end reference apps", "Opinionated architectural guidance", "Better IDE integration", "Performance and cost controls", "Nothing - I'm already unblocked"]
         }
       ]
     }

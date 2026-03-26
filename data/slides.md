@@ -1,15 +1,15 @@
 <!-- layout: centered -->
 
-# The Microsoft AI Stack for .NET
+# The .NET Developer's Guide to AI Agents
 
-## A Living Presentation
+## Building Agentic Apps with the Microsoft AI Stack
 
 <!-- speaker:
-Welcome everyone! This session is different — there are no traditional slides.
-This application IS the presentation. Everything you see is powered by AI agents
-built with the Microsoft AI stack for .NET.
+Say: "Welcome everyone! Today we are going to walk through everything you need
+to know to build AI agents in .NET -- from foundational abstractions to
+production-ready patterns, multi-agent orchestration, and interoperability."
 
-Timing: You have 60 minutes total. Keep the intro to ~3 minutes.
+Timing: You have 60 minutes total. Keep this intro to ~2 minutes.
 -->
 
 ---
@@ -18,51 +18,53 @@ Timing: You have 60 minutes total. Keep the intro to ~3 minutes.
 
 ## Scan to Join
 
-### 📱 Your phone is your remote control
+### This is an interactive session
 
-- Vote on polls
-- Ask questions
-- Shape this session in real-time
+- Vote on polls throughout the talk
+- Ask questions any time
+- Your input shapes the conversation
 
 <!-- speaker:
 Point at the QR code on the display screen.
-Say: "Take out your phones and scan the QR code. You'll be voting on polls,
-asking questions, and literally shaping the content of this session live."
-Wait 30-60 seconds for people to join. Watch the join count on /presenter.
+Say: "Take out your phones and scan the QR code. This session is interactive --
+you will be voting on polls, asking questions, and helping us prioritize
+what matters most to .NET developers building AI agents."
+Wait 30-60 seconds for people to join.
 -->
 
 ---
 
-<!-- topic: meai -->
+<!-- topic: ecosystem -->
 <!-- layout: centered -->
 
-# Microsoft.Extensions.AI
+# The .NET AI Ecosystem
 
-## The Common Language
+## Abstractions That Actually Work
 
 <!-- speaker:
-Transition: "Let's start with the foundation. Everything in the Microsoft AI stack
-speaks through one set of abstractions."
-15 minutes for this segment.
-Ask: "How many of you have swapped an AI provider mid-project and had to rewrite
-your integration layer? That pain ends today."
+Transition: "Let's start with the foundation -- the abstractions that make
+everything else possible."
+Timing: ~8 minutes for this segment.
+Say: "How many of you have built against an AI provider SDK directly and then
+had to switch providers? That pain is what Microsoft.Extensions.AI solves."
 -->
 
 ---
 
 ## Key Abstractions
 
-- **IChatClient** — one interface for any LLM provider
-- **IEmbeddingGenerator** — embeddings for search & ingestion
-- **ChatClientBuilder** — composable middleware pipeline
-- **AIFunctionFactory** — turn any .NET method into an AI tool
+- **IChatClient** -- one interface for any LLM provider
+- **IEmbeddingGenerator** -- provider-agnostic embeddings
+- **ChatClientBuilder** -- composable middleware pipeline
+- **AIFunctionFactory** -- turn any .NET method into an AI tool
 
 <!-- speaker:
 Walk through each abstraction briefly.
-IChatClient: "Your code talks to IChatClient, not to Azure OpenAI or Ollama directly."
-IEmbeddingGenerator: "Same pattern — provider-agnostic embeddings."
-ChatClientBuilder: "Think of it like ASP.NET middleware but for AI calls."
-AIFunctionFactory: "This is the bridge between AI reasoning and your code."
+Say: "IChatClient is the core -- your code talks to this interface, not to
+Azure OpenAI or Ollama or Anthropic directly. IEmbeddingGenerator follows
+the same pattern for embeddings. ChatClientBuilder lets you compose
+middleware like ASP.NET pipeline. And AIFunctionFactory bridges your
+.NET methods into the AI tool-calling world."
 -->
 
 ---
@@ -71,473 +73,421 @@ AIFunctionFactory: "This is the bridge between AI reasoning and your code."
 
 ```csharp
 var openaiBuilder = builder.AddAzureOpenAIClient("openai");
-
 openaiBuilder.AddChatClient("chat")
     .UseFunctionInvocation()
     .UseOpenTelemetry()
     .UseLogging();
-
 openaiBuilder.AddEmbeddingGenerator("embedding");
 ```
 
 <!-- speaker:
-Open src/ConferenceAssistant.Web/Program.cs and show lines 32-42.
-Say: "Three lines of middleware. Function invocation so agents can call tools.
-OpenTelemetry so every LLM call shows up in your traces. Logging for debugging.
-And the embedding generator is registered separately for vector search."
-Emphasize: This is real code from THIS application.
--->
-
----
-
-## Turn Any Method into a Tool
-
-```csharp
-AIFunctionFactory.Create(
-    async (
-        [Description("The topic ID")] string topicId,
-        [Description("The poll question")] string question,
-        [Description("Answer options")] string[] options
-    ) =>
-    {
-        var poll = await pollService.CreatePollAsync(
-            topicId, question, options.ToList());
-        return $"Poll created: {poll.Question}";
-    },
-    "CreatePoll");
-```
-
-<!-- speaker:
-Open src/ConferenceAssistant.Agents/Tools/PollTools.cs and show the CreatePoll tool.
-Say: "AIFunctionFactory.Create takes a lambda or method, reads the Description
-attributes, and generates the JSON schema the model needs to call it.
-Your .NET code becomes an AI tool. That's it."
+Say: "This is real code. Three lines of middleware -- function invocation so
+agents can call tools, OpenTelemetry so every LLM call shows up in your
+distributed traces, and logging for debugging. The embedding generator
+is registered separately for vector search. All of it is composable
+and provider-agnostic."
 -->
 
 ---
 
 ## Why It Matters
 
-- **One interface** → any provider
-- **Zero coupling** → swap Azure OpenAI for Ollama in one line
-- **Middleware** → cross-cutting concerns, not boilerplate
-- **Tool bridge** → AI reasoning meets your code
+- **Provider-agnostic** -- swap Azure OpenAI for Ollama in one line
+- **Composable** -- middleware for cross-cutting concerns
+- **One interface** -- IChatClient works with any provider
+- **Tool bridge** -- AI reasoning meets your .NET code
 
 <!-- speaker:
-Summarize the segment.
-Say: "Before M.E.AI, every provider had its own SDK. Switch providers, rewrite
-your integration. M.E.AI eliminates that entirely."
+Say: "Before M.E.AI, every provider had its own SDK. Switch providers,
+rewrite your integration. M.E.AI eliminates that entirely. Write once,
+run against any model."
 
-Launch the suggested poll about AI experience level.
-Say: "Let's see where everyone is. Vote now — what's your experience with AI in .NET?"
-Wait for poll results to come in. Comment on the distribution.
+Launch the first poll now.
+Say: "Let's see where everyone is -- vote now on your experience level
+with AI in .NET."
+Wait for poll results. Comment on the distribution.
+Timing check: you should be about 10 minutes in.
 -->
 
 ---
 
-<!-- topic: knowledge -->
+<!-- topic: scenarios -->
 <!-- layout: centered -->
 
-# Knowledge Engineering
+# Scenarios and Decision Clarity
 
-## DataIngestion + VectorData
+## Knowing What to Build
 
 <!-- speaker:
-Transition: "Great — now let's talk about giving AI something to be smart about.
-An LLM without knowledge is just pattern matching."
-15 minutes for this segment.
+Transition: "Now that you know the foundation, let's talk about the kinds of
+things you can build -- and how to choose the right approach."
+Timing: ~8 minutes for this segment.
 -->
 
 ---
 
-## The 5-Stage Pipeline
+## Five Scenario Archetypes
 
-1. **Reader** — parse source documents (Markdown, PDF, etc.)
-2. **DocumentProcessors** — pre-process the full document
-3. **Chunker** — split into meaningful pieces
-4. **ChunkProcessors** — enrich each chunk (summaries, keywords)
-5. **Writer** — persist to a vector store
+1. **Background automation** -- scheduled tasks, data pipelines, no user interaction
+2. **Interactive chat** -- conversational UI, streaming responses
+3. **Tool-driven agent** -- LLM decides which tools to call and when
+4. **Copilot extension** -- extend GitHub Copilot or M365 Copilot
+5. **Experimentation** -- prototyping, evaluating models, learning
 
 <!-- speaker:
-Say: "Think of it as an assembly line for knowledge. Raw content goes in,
-searchable semantic chunks come out."
-Draw attention to stages 3 and 4 — that's where the magic happens.
-"Chunking strategy is everything. Too big and you lose precision.
-Too small and you lose context."
+Say: "Every AI project falls into one of these five buckets. Background
+automation is the simplest -- think scheduled jobs that use an LLM.
+Interactive chat adds streaming and conversation. Tool-driven agents
+are where it gets interesting -- the model decides what to do.
+Copilot extensions let you plug into existing AI surfaces.
+And experimentation is where most of you should start."
 -->
 
 ---
 
-## The Pipeline in Code
+## RAG and Tool Calling
 
-```csharp
-IngestionDocumentReader reader = new MarkdownReader();
-IngestionChunker<string> chunker = new HeaderChunker(
-    new(tokenizer) { MaxTokensPerChunk = 500 });
-
-using var writer = new VectorStoreWriter<string>(
-    searchService.VectorStore, dimensionCount: 1536);
-
-using IngestionPipeline<string> pipeline = new(
-    reader, chunker, writer) {
-    ChunkProcessors = { summaryEnricher, keywordEnricher }
-};
-
-await foreach (var result in pipeline.ProcessAsync(dir, file))
-    count++;
-```
+- **RAG** -- Retrieval-Augmented Generation gives the model context
+- **Tool calling** -- the model invokes your code to take action
+- Together they form the **agent loop**: reason, retrieve, act, repeat
+- Most real-world agents combine both patterns
 
 <!-- speaker:
-Open src/ConferenceAssistant.Ingestion/Services/IngestionService.cs.
-Walk through: "MarkdownReader parses the file. HeaderChunker splits on headings
-with a 500-token limit. SummaryEnricher and KeywordEnricher use the LLM to add
-metadata. VectorStoreWriter embeds and stores."
-Emphasize: Each component is pluggable.
+Say: "RAG gives the model knowledge it does not have. Tool calling gives the
+model hands to act with. An agent combines both -- it reasons about what
+it needs, retrieves relevant context, calls tools to take action, and
+repeats until the task is done. This is the core loop of agentic AI."
 -->
 
 ---
 
-## VectorData — Semantic Search
+## The Decision Framework
 
-```csharp
-var store = new InMemoryVectorStore();
-var collection = store.GetCollection<string, ConferenceRecord>(
-    "conference-knowledge");
-
-var embedding = await embeddingGenerator
-    .GenerateVectorAsync(query);
-
-await foreach (var result in collection
-    .SearchAsync(embedding, topK: 5))
-{
-    records.Add(result.Record);
-}
-```
+| Need | Use |
+|------|-----|
+| Simple LLM calls, middleware | **M.E.AI (IChatClient)** |
+| Agents, tools, multi-agent orchestration | **Microsoft Agent Framework** |
+| Cross-app tool interop | **Model Context Protocol (MCP)** |
 
 <!-- speaker:
-Open src/ConferenceAssistant.Ingestion/Services/SemanticSearchService.cs.
-Say: "InMemoryVectorStore — zero infrastructure. No database to set up.
-Generate an embedding from the query, call SearchAsync, get ranked results.
-In production, swap to Azure AI Search or Qdrant — same interface."
+Say: "Here is the decision framework. If you just need to call an LLM with
+some middleware, use M.E.AI directly. If you need agents with tools and
+multi-agent patterns, use the Microsoft Agent Framework -- it builds on
+M.E.AI. If you need your tools to be consumable by other AI apps, add MCP."
+
+Launch the scenario poll now.
+Say: "Which scenario are you most likely to build first? Vote now."
+Wait for results and comment briefly.
+Timing check: you should be about 18 minutes in.
 -->
 
 ---
 
-## The Living Knowledge Base
-
-- Session outline ingested at **startup**
-- Poll responses ingested after **each vote**
-- Audience questions ingested **in real-time**
-- By the end, agents know **everything we discussed**
-
-<!-- speaker:
-Say: "This is what makes this session different. The knowledge base is growing
-RIGHT NOW. Your poll responses from the last segment? Already ingested.
-The agents are already smarter than they were 10 minutes ago."
-
-Launch the suggested poll about RAG challenges.
-Say: "Speaking of knowledge — what's the hardest part of RAG for you?"
-Wait for results.
--->
-
----
-
-<!-- topic: agents -->
+<!-- topic: frameworks -->
 <!-- layout: centered -->
 
-# Agentic AI
+# Agent Frameworks and Value
 
-## The Microsoft Agent Framework
+## From Abstractions to Agents
 
 <!-- speaker:
-Transition: "We have abstractions. We have knowledge. Now let's give AI the
-ability to take action."
-15 minutes for this segment.
-Ask: "Who here has built an AI agent — not just a chatbot, but something that
-can call functions, use tools, and make decisions?"
+Transition: "You know the abstractions. You know the scenarios. Now let's
+build an actual agent."
+Timing: ~10 minutes for this segment.
 -->
 
 ---
 
 ## ChatClientAgent
 
-- Built on **IChatClient** — same abstraction
-- **System instructions** define persona and behavior
-- **Tools** via AIFunctionFactory integration
+```csharp
+ChatClientAgent agent = new(
+    chatClient,
+    name: "ResearchAssistant",
+    instructions: "You are a research assistant...",
+    tools: [searchTool, summarizeTool]);
+```
+
+- Built on **IChatClient** -- same abstraction you already know
+- **Instructions** define persona and behavior
+- **Tools** are registered via AIFunctionFactory
 - **Structured output** for type-safe responses
 
 <!-- speaker:
-Say: "ChatClientAgent is the core building block. It wraps IChatClient and adds
-agent capabilities — instructions, tools, and structured output.
-It's not a new SDK. It's built on the same M.E.AI abstractions we just covered."
--->
-
----
-
-## Our Three Agents
-
-- 🏗️ **Survey Architect** — crafts contextual poll questions
-- 📊 **Response Analyst** — interprets results, spots trends
-- 📚 **Knowledge Curator** — manages the knowledge base
-
-<!-- speaker:
-Say: "This app has three specialized agents. The Survey Architect reads the
-knowledge base and generates polls relevant to what we're discussing.
-The Response Analyst interprets your votes and generates insights.
-The Knowledge Curator enriches everything and retrieves context."
-Open src/ConferenceAssistant.Agents/Definitions/AgentDefinitions.cs
-and show the instruction strings briefly.
--->
-
----
-
-## Agents in Code
-
-```csharp
-ChatClientAgent pollAnalyst = new(
-    chatClient,
-    name: "PollAnalyst",
-    description: "Analyzes poll results and trends",
-    instructions: """
-        You are a poll analyst.
-        Use GetAllPollResults to retrieve data.
-        Identify patterns across segments...""",
-    tools: aiTools);
-```
-
-<!-- speaker:
-Open src/ConferenceAssistant.Agents/Workflows/SessionSummaryWorkflow.cs.
-Say: "Creating an agent is straightforward — give it a chat client, a name,
+Say: "Creating an agent is this simple. Give it a chat client, a name,
 instructions that define its behavior, and tools it can call.
-The instructions ARE the agent's personality and capabilities."
+ChatClientAgent wraps IChatClient -- it is not a new SDK. It is
+the same abstractions with agent capabilities layered on top."
 -->
 
 ---
 
-## Multi-Agent Workflows
+## Multi-Agent Orchestration
 
-```csharp
-var workflow = AgentWorkflowBuilder.BuildConcurrent(
-    [pollAnalyst, questionAnalyst, insightAnalyst],
-    MergeAgentOutputs);
-
-var run = await InProcessExecution.Default.RunAsync(
-    workflow,
-    "Analyze the session and provide findings.");
-```
-
-- **Sequential** — agents in order, building on each other
-- **Concurrent** — fan-out, then merge results
-- **Handoff** — pass control based on conditions
+- **Sequential** -- agents run in order, each building on the last
+- **Concurrent** -- fan-out to multiple agents, merge results
+- **Handoff** -- one agent decides which agent should go next
 
 <!-- speaker:
-Say: "AgentWorkflowBuilder lets you compose agents. BuildConcurrent runs them
-all in parallel and merges the results. Sequential chains them.
-Handoff lets one agent decide which agent should go next."
-Demo: Show the SessionSummaryWorkflow file.
+Say: "Single agents are useful, but real-world scenarios often need
+multiple agents working together. Sequential is like a relay race.
+Concurrent fans out to multiple specialists and merges their outputs.
+Handoff is the most powerful -- one agent triages and routes to the
+right specialist. Think of a customer service system where a router
+agent sends you to billing, technical support, or sales."
 -->
 
 ---
 
-## The Snowball Effect
+## Framework Value vs. Friction
 
-- Segment 1 polls → **generic** (no context yet)
-- Segment 2 polls → **informed** (outline + first responses)
-- Segment 3 polls → **targeted** (full context + trends)
-- Each segment makes agents **smarter**
+- **Value**: agent loop, tool dispatch, conversation management, orchestration
+- **Friction**: learning curve, abstraction overhead, debugging complexity
+- The sweet spot: use the framework for what it gives you, drop down to
+  IChatClient when the framework gets in the way
 
 <!-- speaker:
-Say: "This is the power of a growing knowledge base. The agents right now have
-context from the outline, your poll responses, and accumulated insights.
-Notice how the polls are getting more specific? That's not scripted.
-That's the agents using everything they've learned."
+Say: "Be honest about the tradeoffs. Frameworks give you a lot -- the agent
+loop, tool dispatch, multi-agent orchestration. But they also add
+abstraction layers that can make debugging harder. The key is knowing
+when to use the framework and when to drop down to raw IChatClient.
+Not every problem needs a multi-agent system."
 
-Launch the suggested poll about agent patterns.
-Say: "Which agent pattern would you reach for first in your own projects?"
+Launch the framework value poll now.
+Say: "What would make agent frameworks more valuable to you? Vote now."
+Wait for results.
+Timing check: you should be about 28 minutes in.
 -->
 
 ---
 
-<!-- topic: mcp -->
+<!-- topic: production -->
 <!-- layout: centered -->
 
-# Interoperability
+# Production Readiness
 
-## Model Context Protocol
+## Closing the Confidence Gap
 
 <!-- speaker:
-Transition: "We've built agents with tools and knowledge. But what if other
-AI applications could use our capabilities too? That's MCP."
-10 minutes for this segment.
+Transition: "Building an agent demo is easy. Shipping one to production is
+a different story. Let's talk about what it takes."
+Timing: ~10 minutes for this segment.
 -->
 
 ---
 
-## MCP Server: Our Exposed Tools
+## OpenTelemetry Integration
 
 ```csharp
-[McpServerToolType]
-public class ConferenceTools
-{
-    [McpServerTool(Name = "search_session_knowledge")]
-    [Description("Search the session knowledge base")]
-    public static async Task<string> SearchSessionKnowledge(
-        ISemanticSearchService searchService,
-        [Description("The search query")] string query,
-        [Description("Max results")] int maxResults = 5)
-    {
-        var results = await searchService.SearchAsync(
-            query, maxResults);
-        // ...
-    }
-}
+openaiBuilder.AddChatClient("chat")
+    .UseFunctionInvocation()
+    .UseOpenTelemetry(configure =>
+        configure.EnableSensitiveData = true)
+    .UseLogging();
 ```
 
+- Every LLM call becomes a **span** in your distributed traces
+- Token usage, latency, and model info captured automatically
+- Plug into **any** OpenTelemetry-compatible backend
+
 <!-- speaker:
-Open src/ConferenceAssistant.Mcp/Tools/ConferenceTools.cs.
-Say: "Decorate a static method with McpServerTool. Add Description attributes.
-DI parameters are auto-resolved. That's it — your app just became an MCP server."
-List the tools: get_session_status, get_active_poll, get_poll_results,
-search_session_knowledge, get_audience_questions, generate_session_summary.
+Say: "Observability is not optional in production. This middleware captures
+every LLM call as a span -- token counts, latency, model name, even
+prompt and completion text if you enable sensitive data. It flows into
+whatever OpenTelemetry backend you already use -- Aspire Dashboard,
+Jaeger, Application Insights, Grafana."
 -->
 
 ---
 
-## Wiring Up the MCP Server
+## The Five Production Blockers
+
+1. **Reliability** -- LLMs are non-deterministic; retries, fallbacks, guardrails
+2. **Observability** -- you cannot fix what you cannot see
+3. **Security** -- prompt injection, data leakage, tool authorization
+4. **Cost** -- token usage adds up fast at scale
+5. **Patterns** -- no established best practices yet
+
+<!-- speaker:
+Say: "These are the five things that keep AI apps out of production.
+Reliability -- LLMs sometimes return garbage and you need retries and
+fallbacks. Observability -- you need to see every call. Security --
+prompt injection is real, and tool authorization matters. Cost --
+tokens are not free, especially at scale. And patterns -- we do not
+have decades of best practices like we do for web apps."
+-->
+
+---
+
+## The Confidence Gap
+
+- **Demos work** -- controlled inputs, happy paths, small scale
+- **Production is different** -- adversarial inputs, edge cases, cost pressure
+- The gap: most teams can build a demo but hesitate to ship
+- Closing it requires: testing, observability, guardrails, and iteration
+
+<!-- speaker:
+Say: "Here is the uncomfortable truth. Almost every team I talk to can build
+an impressive AI demo in a week. But when you ask them to ship it to
+production, they hesitate. The gap between demo and production is real,
+and closing it takes investment in testing, observability, and guardrails."
+
+Launch the production readiness poll now.
+Say: "What is your biggest blocker to shipping AI in production? Vote now."
+Wait for results. Comment on what the audience finds most challenging.
+Timing check: you should be about 38 minutes in.
+-->
+
+---
+
+<!-- topic: interop -->
+<!-- layout: centered -->
+
+# Ecosystem and Interoperability
+
+## Making .NET a First-Class AI Citizen
+
+<!-- speaker:
+Transition: "We have talked about building agents. Now let's talk about
+connecting them to the broader AI ecosystem."
+Timing: ~8 minutes for this segment.
+-->
+
+---
+
+## MCP Server in .NET
 
 ```csharp
 builder.Services
-    .AddMcpServer(options =>
-    {
-        options.ServerInfo = new()
-        {
-            Name = "ConferencePulse",
-            Version = "1.0.0"
+    .AddMcpServer(options => {
+        options.ServerInfo = new() {
+            Name = "MyAgent", Version = "1.0.0"
         };
     })
-    .WithToolsFromAssembly(typeof(ConferenceTools).Assembly)
+    .WithToolsFromAssembly()
     .WithHttpTransport();
-
 app.MapMcp("/mcp");
 ```
 
 <!-- speaker:
-Show Program.cs where MCP is registered.
-Say: "AddMcpServer, discover tools from the assembly, enable HTTP transport,
-map the endpoint. Any MCP-compatible client can now connect —
-GitHub Copilot, VS Code, Claude, custom apps."
+Say: "Model Context Protocol lets any AI app consume your tools. AddMcpServer,
+discover tools from the assembly, enable HTTP transport, map the endpoint.
+That is it. GitHub Copilot, VS Code, Claude Desktop, any MCP client can
+now call your tools. Your .NET app just became part of the AI ecosystem."
 -->
 
 ---
 
-## The Ecosystem Effect
+## .NET's Strategic Positioning
 
-- **Your app** → MCP server → tools for any AI client
-- **External servers** → MCP client → knowledge for your agents
-- **No custom integrations** — just a protocol
-- **Composable AI** across the entire ecosystem
+1. **Best runtime for AI backends** -- performance, memory safety, enterprise readiness
+2. **Full-stack AI platform** -- from abstractions to agents to interop
+3. **Enterprise bridge** -- connecting existing .NET systems to AI capabilities
+4. **Cross-platform agent host** -- run agents on any OS, any cloud
 
 <!-- speaker:
-Say: "MCP creates an ecosystem. Your AI app's capabilities become building blocks
-that any other AI app can use. And your app can consume tools from any MCP server.
-It's like REST APIs but for AI tool calling."
-
-Launch the suggested poll about MCP excitement.
-Say: "What excites you most about MCP? Vote now."
+Say: ".NET has four strategic positions in the AI space. It is the best runtime
+for building AI backend services. It provides a full-stack platform from
+low-level abstractions to high-level agent orchestration. It bridges your
+existing enterprise .NET systems to AI. And it runs everywhere -- any OS,
+any cloud, any container runtime."
 -->
 
 ---
 
-<!-- topic: closer -->
+## Cross-Framework Interop
+
+- **MCP** connects .NET agents to Python, TypeScript, and other ecosystems
+- **IChatClient** abstracts the model -- your agent code does not care what is behind it
+- **OpenTelemetry** gives you a unified view across languages and frameworks
+- The vision: polyglot AI systems that use the best tool for each job
+
+<!-- speaker:
+Say: "The AI ecosystem is polyglot. Python has the best ML libraries. TypeScript
+has the best browser integrations. .NET has the best enterprise runtime.
+MCP, IChatClient, and OpenTelemetry let you build systems that span all
+of them without tight coupling."
+
+Launch the ecosystem poll now.
+Say: "What interop scenario matters most to you? Vote now."
+Wait for results.
+Timing check: you should be about 46 minutes in.
+-->
+
+---
+
+<!-- topic: priorities -->
 <!-- layout: centered -->
 
-# The Closer
+# Priorities and Next Steps
 
-## Full Stack in One Command
+## What .NET Developers Need Most
 
 <!-- speaker:
-Transition: "Everything we've discussed — abstractions, knowledge, agents,
-interoperability — comes together right now."
-5 minutes for this segment. Build the energy.
-Say: "Watch the big screen. One command. Every technology."
+Transition: "We have covered the stack from top to bottom. Now let's talk about
+what comes next -- and what you think should be prioritized."
+Timing: ~10 minutes for the rest of the session.
 -->
 
 ---
 
-## The Cascade
+## Force-Rank the Investment Areas
 
-1. **Copilot** sends request → MCP server
-2. **MCP** discovers `generate_session_summary` tool
-3. **Agent Framework** orchestrates the workflow
-4. **VectorData** searches all accumulated knowledge
-5. **DataIngestion** — all that knowledge was built by pipelines
-6. **M.E.AI** — every call flows through the abstractions
+1. **Guidance** -- reference architectures, best practices, decision frameworks
+2. **Templates** -- dotnet new templates for common agent scenarios
+3. **Tooling** -- IDE integration, debugging, prompt testing
+4. **Simplification** -- reduce boilerplate, improve defaults
+5. **Smart defaults** -- opinionated starters that just work
 
 <!-- speaker:
-Say: "We're going to connect GitHub Copilot to our MCP server and ask it
-to summarize this session. Watch what happens."
-Build anticipation. This is the climax of the talk.
-Demo: Connect Copilot to the /mcp endpoint and type:
-"Summarize this session including poll results and audience questions."
-Watch the cascade visualization on /display.
+Say: "If you could only invest in one of these, which would it be? Guidance
+means documentation and architectural patterns. Templates means
+dotnet new agent-chat and you have a working app. Tooling means better
+debugging and prompt testing in Visual Studio. Simplification means
+fewer lines of code to get started. Smart defaults means opinionated
+choices so you do not have to make every decision yourself."
 -->
 
 ---
 
-## One Command. Five Technologies.
+## Adoption Accelerators
 
-```csharp
-builder.Services.AddMcpServer(options => {
-    options.ServerInfo = new() {
-        Name = "ConferencePulse", Version = "1.0.0"
-    };
-})
-.WithToolsFromAssembly(typeof(ConferenceTools).Assembly)
-.WithHttpTransport();
-
-// That's it. Copilot does the rest.
-// MCP → Agents → VectorData → Ingestion → M.E.AI
-```
+- **Reference apps** -- real-world examples, not toy demos
+- **Architectural guidance** -- when to use what, and why
+- **IDE integration** -- debugging agents in Visual Studio and VS Code
+- **Cost controls** -- token budgets, caching, model routing
 
 <!-- speaker:
-Say: "This is all the code it took to expose our entire application to Copilot.
-Seven lines. The agent framework, vector search, ingestion pipelines,
-and M.E.AI abstractions — they're all already wired up.
-MCP just opens the door."
-Let the cascade visualization finish on screen.
+Say: "These are the things that will actually accelerate adoption. Reference
+apps that show real patterns, not just hello-world demos. Architectural
+guidance so teams do not have to figure out the hard problems alone.
+IDE integration so debugging an agent is as natural as debugging a
+web app. And cost controls so you can ship without worrying about
+a surprise bill."
+
+Launch the priorities poll now.
+Say: "What would accelerate your AI adoption the most? Vote now."
+Wait for results. This is the last poll -- spend a moment discussing
+what the audience prioritized.
+Timing check: you should be about 53 minutes in.
 -->
 
 ---
 
-## What You Saw Today
+## Resources
 
-- **M.E.AI** — provider-agnostic AI abstractions
-- **DataIngestion** — documents → searchable knowledge
-- **VectorData** — semantic search, any store
-- **Agent Framework** — agents with tools & workflows
-- **MCP** — universal AI interoperability
-
-<!-- speaker:
-Recap quickly. Point to each item.
-Say: "Five technologies. One application. Built live in 60 minutes.
-And the best part? Every one of these is open source and shipping now."
--->
-
----
-
-<!-- layout: centered -->
-
-## Go Build Something
-
-- 📦 **M.E.AI** — github.com/dotnet/extensions
-- 🤖 **Agent Framework** — github.com/microsoft/agent-framework
-- 🔌 **MCP for .NET** — github.com/modelcontextprotocol/csharp-sdk
-- 🔍 **VectorData** — learn.microsoft.com/dotnet/ai
-- 💻 **This app** — scan the QR code
+- **The .NET Developer's Guide to AI Agents** -- github.com/JeremyLikness/dotnet-developer-guide-ai-agents
+- **Microsoft.Extensions.AI** -- github.com/dotnet/extensions
+- **Microsoft Agent Framework** -- github.com/microsoft/agent-framework
+- **MCP for .NET** -- github.com/modelcontextprotocol/csharp-sdk
+- **VectorData** -- learn.microsoft.com/dotnet/ai
 
 <!-- speaker:
-Say: "All the links are on screen. The source code for this entire application
-is available — scan the QR code."
+Say: "All the links are on screen. The Developer's Guide repo has the full
+companion content for this talk. The Extensions repo has M.E.AI.
+The Agent Framework repo has ChatClientAgent and orchestration.
+The MCP C# SDK has everything you need for Model Context Protocol.
+And the VectorData docs on learn.microsoft.com cover semantic search."
 Pause for people to take photos of the screen.
 -->
 
@@ -547,14 +497,14 @@ Pause for people to take photos of the screen.
 
 # Thank You
 
-### The presentation that presented itself
+### The .NET Developer's Guide to AI Agents
 
 <!-- speaker:
-Final slide. Say: "Thank you all for being part of this experiment.
-You didn't just watch a presentation — you shaped it. Your votes,
-your questions, your participation made the agents smarter and the
-content more relevant. That's the power of the Microsoft AI stack for .NET."
+Say: "Thank you for being part of this session. The AI agent space in .NET is
+moving fast -- the abstractions are solid, the frameworks are maturing,
+and the interop story is coming together. Go build something, share what
+you learn, and help shape where this ecosystem goes next."
 
-If time permits, take 2-3 live questions.
-Launch the final poll: "Rate this session format."
+If time permits, take 2-3 live questions from the audience.
+Timing: you should finish right around 60 minutes.
 -->

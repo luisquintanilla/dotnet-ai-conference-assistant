@@ -404,7 +404,8 @@ var dataRoot = Path.Combine(app.Environment.ContentRootPath, "..", "..", "data")
 
 // Create the default demo session only if not already restored from database
 var sessionService = app.Services.GetRequiredService<ISessionService>();
-if (sessionManager.GetSession("DOTNETAI-CONF") is null)
+const string defaultSessionCode = "AGENTS-GUIDE";
+if (sessionManager.GetSession(defaultSessionCode) is null)
 {
     await sessionService.LoadSessionAsync(Path.Combine(dataRoot, "seed-topics.json"));
     app.Logger.LogInformation("Default session loaded: {Title} (code: {Code}, PIN: {Pin})",
@@ -415,7 +416,7 @@ if (sessionManager.GetSession("DOTNETAI-CONF") is null)
 else
 {
     // Set the default session code so SessionService points to the restored session
-    sessionService.SetDefaultSession("DOTNETAI-CONF");
+    sessionService.SetDefaultSession(defaultSessionCode);
     app.Logger.LogInformation("Session restored from database: {Title} (code: {Code})",
         sessionService.CurrentSession?.Title,
         sessionService.CurrentSession?.SessionCode);
@@ -445,6 +446,23 @@ _ = Task.Run(async () =>
     catch (Exception ex)
     {
         app.Logger.LogWarning(ex, "MCP client initialization failed — doc-augmented answers unavailable");
+    }
+});
+
+// Auto-import the .NET Developer's Guide to AI Agents into the knowledge base
+_ = Task.Run(async () =>
+{
+    try
+    {
+        var ingestion = app.Services.GetRequiredService<IIngestionService>();
+        var result = await ingestion.IngestGitHubRepoAsync("JeremyLikness", "dotnet-developer-guide-ai-agents");
+        app.Logger.LogInformation(
+            "Auto-imported knowledge base: {Count} documents from JeremyLikness/dotnet-developer-guide-ai-agents ({Errors} errors)",
+            result.RecordCount, result.Errors.Count);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "GitHub repo auto-import failed — knowledge base will be populated manually");
     }
 });
 
