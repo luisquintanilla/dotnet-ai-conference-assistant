@@ -3,7 +3,7 @@
 <div class="poll-card">
     <h3>@Poll.Question</h3>
     <div class="poll-options">
-        @foreach (var option in Poll.Options)
+        @foreach (var option in displayOptions)
         {
             var isSelected = SelectedOption == option;
             <button class="poll-option @(isSelected ? "selected" : "") @(HasVoted ? "disabled" : "")"
@@ -19,23 +19,91 @@
                 }
             </button>
         }
+
+        @if (Poll.AllowOther)
+        {
+            var isOtherSelected = SelectedOption == "Other";
+            var otherOptionName = "Other";
+            <button class="poll-option @(isOtherSelected ? "selected" : "") @(HasVoted ? "disabled" : "")"
+                    disabled="@(HasVoted || showOtherInput)"
+                    @onclick="() => OnVote(otherOptionName)">
+                <span class="option-text">Other…</span>
+                @if (HasVoted && Results is not null && Results.TryGetValue("Other", out var otherCount))
+                {
+                    var total = Results.Values.Sum();
+                    var pct = total > 0 ? (int)(100.0 * otherCount / total) : 0;
+                    <span class="option-bar" style="width: @(pct)%"></span>
+                    <span class="option-pct">@pct%</span>
+                }
+            </button>
+
+            @if (showOtherInput && !HasVoted)
+            {
+                <div class="other-input-area">
+                    <input type="text" class="other-text-input" @bind="otherInputText" @bind:event="oninput"
+                           placeholder="Type your answer…" @onkeydown="HandleOtherKeydown" />
+                    <button class="btn-other-submit" disabled="@string.IsNullOrWhiteSpace(otherInputText)"
+                            @onclick="SubmitOther">
+                        Submit
+                    </button>
+                </div>
+            }
+        }
     </div>
 </div>
 
 @code {
     [Parameter, EditorRequired] public Poll Poll { get; set; } = default!;
     [Parameter] public Dictionary<string, int>? Results { get; set; }
-    [Parameter] public EventCallback<string> OnVoteSubmitted { get; set; }
+    [Parameter] public EventCallback<(string Option, string? OtherText)> OnVoteSubmitted { get; set; }
+    [Parameter] public string? AttendeeId { get; set; }
 
     private string? SelectedOption;
     private bool HasVoted;
+    private bool showOtherInput;
+    private string otherInputText = "";
+    private List<string> displayOptions = [];
+
+    protected override void OnParametersSet()
+    {
+        displayOptions = GetShuffledOptions();
+    }
+
+    private List<string> GetShuffledOptions()
+    {
+        if (string.IsNullOrEmpty(AttendeeId)) return Poll.Options;
+        var seed = (Poll.Id + AttendeeId).GetHashCode();
+        var rng = new Random(seed);
+        return [.. Poll.Options.OrderBy(_ => rng.Next())];
+    }
 
     private async Task OnVote(string option)
     {
         if (HasVoted) return;
+
+        if (option == "Other")
+        {
+            showOtherInput = true;
+            return;
+        }
+
         SelectedOption = option;
         HasVoted = true;
-        await OnVoteSubmitted.InvokeAsync(option);
+        await OnVoteSubmitted.InvokeAsync((option, null));
+    }
+
+    private async Task SubmitOther()
+    {
+        if (HasVoted || string.IsNullOrWhiteSpace(otherInputText)) return;
+        SelectedOption = "Other";
+        HasVoted = true;
+        showOtherInput = false;
+        await OnVoteSubmitted.InvokeAsync(("Other", otherInputText.Trim()));
+    }
+
+    private async Task HandleOtherKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SubmitOther();
     }
 }
 
@@ -105,5 +173,39 @@
         float: right;
         font-weight: 600;
         color: #e94560;
+    }
+
+    .other-input-area {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .other-text-input {
+        flex: 1;
+        padding: 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.5rem;
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        font-size: 1rem;
+    }
+
+    .other-text-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .btn-other-submit {
+        padding: 0.75rem 1.25rem;
+        background: #e94560;
+        border: none;
+        border-radius: 0.5rem;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .btn-other-submit:disabled {
+        opacity: 0.3;
+        cursor: default;
     }
 </style>

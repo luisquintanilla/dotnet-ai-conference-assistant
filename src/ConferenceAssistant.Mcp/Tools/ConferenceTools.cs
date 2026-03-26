@@ -124,11 +124,9 @@ public class ConferenceTools
             var record = results[i];
             sb.AppendLine($"## Result {i + 1}");
             sb.AppendLine($"**Source:** {record.Source}");
-            if (!string.IsNullOrEmpty(record.TopicId))
-                sb.AppendLine($"**Topic:** {record.TopicId}");
             sb.AppendLine($"**Content:** {record.Content}");
-            if (!string.IsNullOrEmpty(record.Summary))
-                sb.AppendLine($"**Summary:** {record.Summary}");
+            if (!string.IsNullOrEmpty(record.Context))
+                sb.AppendLine($"**Context:** {record.Context}");
             sb.AppendLine();
         }
 

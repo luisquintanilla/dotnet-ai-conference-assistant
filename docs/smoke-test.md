@@ -1,7 +1,8 @@
 # 🧪 Conference Pulse — Smoke Test & Getting Started Guide
 
-> **Updated for Aspire AI integration + real-time ingestion + AI answers + insight generation**
+> **Updated for multi-session architecture + Aspire AI integration + PostgreSQL persistence (pgvector) + real-time ingestion + AI answers + insight generation**
 > All AI configuration flows through Aspire's `AddAzureOpenAI` + `RunAsExisting` + user secrets.
+> PostgreSQL + pgvector container is managed by Aspire (requires Docker).
 
 ---
 
@@ -15,7 +16,13 @@ dotnet --list-sdks          # must show 10.x.x
 # Aspire workload (install if missing)
 dotnet workload list        # should show "aspire"
 dotnet workload install aspire   # if not listed
+
+# Docker (required for PostgreSQL container)
+docker --version            # must be installed and running
 ```
+
+> ⚠️ **Docker is required.** The app uses a PostgreSQL + pgvector container
+> managed by Aspire. Docker Desktop (or equivalent) must be running before launch.
 
 ### Azure OpenAI Resource
 
@@ -85,6 +92,9 @@ cd C:\Dev\dotnet-ai-conference-assistant
 # Build everything (should be 0 errors, 0 warnings)
 dotnet build
 
+# One-time: log in to dev tunnels
+devtunnel user login
+
 # Launch via Aspire CLI (recommended) or project
 aspire run
 # OR: dotnet run --project src/ConferenceAssistant.AppHost
@@ -94,13 +104,22 @@ aspire run
 
 ```
 info: Aspire.Hosting.DistributedApplication[0]
-      Aspire version: 13.1.2
+      Aspire version: 13.2.0
       Dashboard is running at: http://localhost:18888/login?t=<token>
       ...
-info: ConferenceAssistant.Web
+info: Starting PostgreSQL container (pgvector/pgvector:pg17)...
+info: Dev tunnel 'conference-tunnel' is running at: https://<id>.devtunnels.ms/
+      Default session created: XXXXXXXX (PIN: 0000)
       Session loaded: The Microsoft AI Stack for .NET
       Ingested 12 outline chunks into knowledge base
 ```
+
+> 📌 **Note the session code** in the startup logs (e.g., `XXXXXXXX`). The default
+> demo session is auto-created with PIN **`0000`** and an auto-generated session code.
+> You'll need this code to access presenter, display, and attendee views.
+
+> 🐘 **First launch takes longer** — Docker pulls the `pgvector/pgvector:pg17` image
+> (~400MB). Subsequent launches reuse the cached image and data volume.
 
 ### Key URLs
 
@@ -108,6 +127,7 @@ info: ConferenceAssistant.Web
 |-----|------|
 | **Aspire Dashboard** | `http://localhost:18888` (shown in console output) |
 | **Web App** | Check the dashboard → `web` resource → click the endpoint (typically `https://localhost:<port>`) |
+| **Home / Sessions** | `/` — Landing page showing active sessions + "Create New Session" button |
 
 > The web app port is **dynamically assigned by Aspire** — don't guess it.
 > Always get it from the Aspire dashboard's Resources tab.
@@ -127,30 +147,46 @@ All non-AI features (manual polls, voting, questions, topic management) work fin
 | # | Check | Expected |
 |---|-------|----------|
 | 1 | Dashboard loads | Login page → click through with token from console |
-| 2 | Resources tab | Shows **`web`** (ASP.NET Core) and **`openai`** (Azure OpenAI) |
+| 2 | Resources tab | Shows **`web`** (ASP.NET Core), **`openai`** (Azure OpenAI), **`postgres`** (PostgreSQL + pgvector), **`conferencedb`** (database), and **`postgres-pgweb`** (pgWeb admin) |
 | 3 | `web` resource status | Running / Healthy |
 | 4 | `openai` resource status | Healthy (if secrets configured) |
-| 5 | Click `web` endpoint link | Opens the app in browser |
-| 6 | Structured Logs tab | Shows startup messages |
-| 7 | Traces tab | Shows HTTP request traces with OpenTelemetry spans |
+| 5 | `postgres` resource status | Running (Docker container) |
+| 6 | `postgres-pgweb` endpoint | Click to open pgWeb — browse `conferencedb` tables (sessions, polls, etc.) |
+| 7 | Click `web` endpoint link | Opens the app in browser |
+| 8 | Structured Logs tab | Shows startup messages including database schema creation |
+| 9 | Traces tab | Shows HTTP request traces with OpenTelemetry spans |
 
 ---
 
 ## 3. Home Page — `/`
 
+The homepage serves as the **session hub** — it lists all active sessions and lets you create new ones.
+
 | # | Check | Expected |
 |---|-------|----------|
-| 1 | Page loads | Hero: "🎯 Conference Pulse" + "AI-Powered Conference Assistant" |
-| 2 | Three cards visible | Presenter Dashboard, Join Session, Projection Display |
-| 3 | Click "Presenter Dashboard" | Navigates to `/presenter` |
-| 4 | Click "Join Session" | Navigates to `/session/DOTNETAI-CONF` |
-| 5 | Click "Projection Display" | Navigates to `/display` |
+| 1 | Page loads | Conference Pulse landing page appears |
+| 2 | Active sessions list | Default session visible (auto-created at startup) |
+| 3 | Session cards | Each shows title, session code, status, and attendee count |
+| 4 | "Create New Session" button | Visible and navigates to `/create` |
+| 5 | Click a session card | Expands/shows join options (Presenter, Attendee, Display) |
+| 6 | Click "Presenter Dashboard" | Navigates to `/presenter/{SessionCode}` |
+| 7 | Click "Join Session" | Navigates to `/session/{SessionCode}` |
+| 8 | Click "Projection Display" | Navigates to `/display/{SessionCode}` |
 
 ---
 
-## 4. Presenter Dashboard — `/presenter`
+## 4. Presenter Dashboard — `/presenter/{SessionCode}`
 
 Open this in your "speaker laptop" browser window.
+
+> 🔐 **PIN Gate:** Navigating to `/presenter/{SessionCode}` first shows a PIN input.
+> Enter the host PIN (default session uses `0000`) to unlock the full dashboard.
+> PIN validation is per Blazor circuit (browser tab) — no cookies or tokens.
+
+The presenter uses a **3-column layout** (simultaneous, no tabs):
+- **Left column** (~220px) — Topic outline: auto-highlights current topic based on slide's TopicId, click-to-jump navigation, collapsible import section
+- **Center column** (flex) — Current slide preview, up-next preview, speaker notes, slide navigation, quick poll launch
+- **Right column** (~320px) — Global Q&A feed (all topics), active poll results, insights
 
 ### 4a. Session Setup State
 
@@ -159,9 +195,10 @@ Open this in your "speaker laptop" browser window.
 | 1 | Session title shows | "The Microsoft AI Stack for .NET" |
 | 2 | Status badge | Shows "Setup" |
 | 3 | Knowledge base counter | Shows "📚 X records" (X > 0 if AI configured) |
-| 4 | 5 topics in left panel | meai, knowledge, agents, mcp, closer |
+| 4 | 5 topics in left column | meai, knowledge, agents, mcp, closer |
 | 5 | "🚀 Go Live" button visible | Yes |
 | 6 | Topic activate buttons | Should NOT appear (session not live yet) |
+| 7 | 3-column layout | Left: topic outline, Center: slide zone, Right: Q&A + polls + insights |
 
 ### 4b. Go Live
 
@@ -175,17 +212,18 @@ Open this in your "speaker laptop" browser window.
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | Click **▶ Activate** on "Microsoft.Extensions.AI" | Topic becomes active, main panel shows title + description + talking points |
+| 1 | Click **▶ Activate** on "Microsoft.Extensions.AI" | Topic becomes active, left column highlights it |
 | 2 | Active topic badge | Shows "Active" status |
 | 3 | Other topics | Still show "Upcoming" |
 | 4 | Click **✓ Complete** on active topic | Status changes to "Completed" |
 | 5 | Activate next topic | New topic becomes active, previous stays completed |
+| 6 | Navigate slides past topic boundary | Topic auto-activates via SyncTopicToSlide (left column updates) |
 
 ### 4d. Polls — Suggested
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | Activate topic "meai" | Poll section appears |
+| 1 | Activate topic "meai" | Poll section appears in center column |
 | 2 | Dropdown shows suggested polls | "What's your experience level with AI in .NET?" etc. |
 | 3 | Select a poll from dropdown | **Launch** button becomes enabled |
 | 4 | Click **Launch** | Poll appears with options + vote counts (all 0) |
@@ -207,12 +245,14 @@ Open this in your "speaker laptop" browser window.
 | 1 | Click **✏️ Custom Poll** | Form with question input + 2 option fields |
 | 2 | Fill in question + ≥2 options | **🚀 Create & Go Live** becomes enabled |
 | 3 | Click **🚀 Create & Go Live** | Custom poll created and goes live |
+| 4 | Create poll with no active topic | Poll created as session-level (TopicId is null) |
 
 ---
 
-## 5. Attendee Session — `/session/DOTNETAI-CONF`
+## 5. Attendee Session — `/session/{SessionCode}`
 
-Open in a second browser window (or phone).
+Open in a second browser window (or phone). Replace `{SessionCode}` with the
+code from the startup logs (e.g., `/session/XXXXXXXX`).
 
 ### 5a. Before Go Live
 
@@ -226,7 +266,7 @@ Open in a second browser window (or phone).
 |---|--------|----------|
 | 1 | Click a poll option | Vote registered |
 | 2 | Results update | Vote count increments |
-| 3 | Switch to Presenter tab | Presenter sees updated counts + percentages |
+| 3 | Switch to Presenter | Presenter sees updated counts + percentages in right column |
 
 ### 5c. Questions + AI Auto-Answer
 
@@ -236,9 +276,10 @@ Open in a second browser window (or phone).
 | 2 | Click **Send** | Question submitted, input clears |
 | 3 | Question in "🔥 Top Questions" | With 👍 0 count |
 | 4 | Click 👍 on a question | Count increments |
-| 5 | Switch to Presenter tab | Question visible in "❓ Audience Questions" |
+| 5 | Switch to Presenter | Question visible in right column "❓ Audience Questions" (global — all topics) |
 | 6 | Wait 5-10 seconds | 🤖 AI answer appears automatically (blue-tinted, with AI badge) |
 | 7 | AI answer uses KB context | Answer references session outline content |
+| 8 | Topic badge on question | Shows which topic the question came from |
 
 ### 5d. Answering / Overriding (from Presenter)
 
@@ -251,21 +292,74 @@ Open in a second browser window (or phone).
 
 ---
 
-## 6. Projection Display — `/display`
+## 6. Projection Display — `/display/{SessionCode}`
 
 Open in a third browser window (simulates projector/big screen).
 
 | # | Check | Expected |
 |---|-------|----------|
-| 1 | Before Go Live | "Waiting for session to begin..." |
-| 2 | After Go Live | Session title + active topic in header |
+| 1 | Before Go Live | Large QR code with "Scan to Join" + session code + URL |
+| 2 | After Go Live | Session title + active topic in header; sidebar QR code visible |
 | 3 | When poll active | PollResultsChart renders with live bar chart |
 | 4 | Vote from Session tab | Display updates with new vote counts |
-| 5 | When no active poll | Shows InsightCard or CascadeVisualization |
+| 5 | When no active poll/slide | Shows QR code (idle state) |
+| 6 | When slide active | Current slide full-screen; smaller QR code in sidebar |
 
 ---
 
-## 7. MCP Server — `/mcp`
+## 7. Multi-Session Testing
+
+The app supports multiple concurrent sessions. Each session has its own code, host PIN, and isolated state.
+
+### 7a. Create a New Session
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Navigate to `/` (home page) | Active sessions list visible |
+| 2 | Click **"Create New Session"** | Navigates to `/create` |
+| 3 | Fill in title (e.g., "My Test Session") | Title field accepts input |
+| 4 | Optionally set a custom session code | Auto-generated if left blank |
+| 5 | Set a host PIN (4-6 digits) | Required field |
+| 6 | Optionally add description and template | Optional fields |
+| 7 | Click **Create** | Redirects to home page; new session appears in list |
+
+### 7b. Join as Attendee
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | From home page, find your new session | Session card visible |
+| 2 | Click **"Join Session"** (or navigate to `/session/{YourCode}`) | Attendee view loads for that session |
+| 3 | Session state is isolated | Polls, questions, topics are specific to this session |
+
+### 7c. Open Presenter View with PIN
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Navigate to `/presenter/{YourCode}` | PIN gate appears — input field for host PIN |
+| 2 | Enter incorrect PIN | Error message, dashboard stays locked |
+| 3 | Enter correct PIN | Full presenter dashboard unlocks |
+| 4 | PIN persists per browser tab | Refreshing the tab does NOT re-prompt (same Blazor circuit) |
+| 5 | Open a new tab to same URL | PIN gate appears again (new circuit) |
+
+### 7d. Open Display View
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Navigate to `/display/{YourCode}` | Projection view loads for that session |
+| 2 | Display is session-specific | Shows only polls/slides/insights for that session code |
+
+### 7e. Concurrent Sessions
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Create two sessions with different codes | Both appear on home page |
+| 2 | Open presenter for each in separate tabs | Each has independent state |
+| 3 | Launch a poll in session A | Only session A attendees/display see the poll |
+| 4 | Submit a question in session B | Only session B presenter sees the question |
+
+---
+
+## 8. MCP Server — `/mcp`
 
 The app exposes 10 MCP tools via Streamable HTTP. Get the base URL from
 the Aspire dashboard (the `web` resource endpoint).
@@ -349,10 +443,13 @@ Invoke-RestMethod -Uri "$baseUrl/mcp" `
 
 ---
 
-## 8. Real-Time Ingestion — Knowledge Base Growth
+## 9. Real-Time Ingestion — Knowledge Base Growth
 
 The knowledge base starts with ~20 outline chunks and **grows in real-time** as the
 session progresses. This is the "snowball effect" — the core demo narrative.
+
+All vector data is persisted in PostgreSQL via pgvector — the knowledge base survives
+app restarts without re-ingestion.
 
 ### What Gets Ingested
 
@@ -378,7 +475,7 @@ session progresses. This is the "snowball effect" — the core demo narrative.
 
 ---
 
-## 9. Insight Generation — Auto-Analysis
+## 10. Insight Generation — Auto-Analysis
 
 Insights are **automatically generated** by AI when:
 
@@ -398,7 +495,7 @@ Insights are **automatically generated** by AI when:
 
 ---
 
-## 10. MCP with VS Code / Copilot CLI
+## 11. MCP with VS Code / Copilot CLI
 
 ### VS Code Configuration
 
@@ -426,21 +523,24 @@ The repo includes `.vscode/mcp.json` pre-configured:
 
 ---
 
-## 11. Full Demo Flow (End-to-End)
+## 12. Full Demo Flow (End-to-End)
 
 This simulates the actual live presentation:
 
 ```
 SETUP:
   1. Open Aspire dashboard: http://localhost:18888
-  2. Open 3 browser tabs from the web resource endpoint:
-     - Tab 1: /presenter              (your laptop — speaker controls)
-     - Tab 2: /display                (projector — audience-facing)
-     - Tab 3: /session/DOTNETAI-CONF  (audience phone — participation)
+  2. Note the default session code from startup logs (e.g., XXXXXXXX)
+  3. Open 3 browser tabs from the web resource endpoint:
+     - Tab 1: /presenter/{SessionCode}   (your laptop — speaker controls)
+       → Enter PIN "0000" when prompted
+     - Tab 2: /display/{SessionCode}     (projector — audience-facing)
+     - Tab 3: /session/{SessionCode}     (audience phone — participation)
 
 ACT 1 — GO LIVE:
   3. Presenter: Click "🚀 Go Live"
-     → Display updates from "Waiting..." to live session header
+     → Display updates from QR code idle state to live session header
+     → QR code moves to sidebar; session title visible
      → Session tab shows active session
 
 ACT 2 — SEGMENT 1 (Microsoft.Extensions.AI):
@@ -473,13 +573,13 @@ ACT 4 — THE CLOSER:
   14. Open Copilot CLI → point at MCP endpoint:
       "Summarize this conference session using the MCP server at <url>/mcp"
   15. Copilot calls generate_session_summary tool
-      → Display shows cascade visualization lighting up
+      → Display shows summary content with QR code in sidebar
       → Summary includes all poll results, insights, questions, KB stats
 ```
 
 ---
 
-## 12. Full Lifecycle Verification
+## 13. Full Lifecycle Verification
 
 Verify the complete data flow through one topic:
 
@@ -502,7 +602,41 @@ Verify the complete data flow through one topic:
 
 ---
 
-## 13. Feature Matrix — What Works With/Without AI
+## 14. Data Persistence — PostgreSQL
+
+All session data is persisted to PostgreSQL. Verify data survives app restarts and can be cleared.
+
+### 14a. Verify Database via pgWeb
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Open Aspire dashboard → click `postgres-pgweb` endpoint | pgWeb admin UI loads |
+| 2 | Select `conferencedb` database | Tables listed: sessions, session_topics, slides, polls, poll_responses, audience_questions, question_answers, insights |
+| 3 | Query `SELECT * FROM sessions` | Default session visible with code, title, PIN |
+| 4 | Query `SELECT * FROM session_topics` | 5 topics with TalkingPoints and SuggestedPolls (JSONB) |
+
+### 14b. Data Persists Across Restart
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Launch a poll → vote → close → submit a question | Data visible in Presenter dashboard |
+| 2 | Stop the app (Ctrl+C / `aspire stop`) | App shuts down; PostgreSQL container keeps running |
+| 3 | Restart the app (`aspire run`) | App starts, reconnects to existing PostgreSQL |
+| 4 | Navigate to Presenter dashboard | Previous session restored with polls, questions, and insights intact |
+| 5 | KB count preserved | Knowledge base records still present (pgvector data persisted) |
+
+### 14c. Clear Runtime Data
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | `ClearRuntimeDataAsync` clears polls, responses, questions, answers, insights | Session/topic/slide structure preserved |
+| 2 | Presenter dashboard after clear | Polls, Q&A, and insights sections are empty |
+| 3 | Knowledge base unaffected | KB count unchanged (vector data separate from runtime data) |
+| 4 | Can launch new polls + ask new questions | Session fully functional after clear |
+
+---
+
+## 15. Feature Matrix — What Works With/Without AI
 
 | Feature | Without AI | With AI |
 |---------|:----------:|:-------:|
@@ -522,16 +656,20 @@ Verify the complete data flow through one topic:
 | **Session summary** | ❌ | ✅ |
 | **Outline ingestion** | ❌ | ✅ |
 | **Semantic search** | ⚠️ empty | ✅ |
+| **PostgreSQL persistence** | ✅ | ✅ |
 
 ---
 
-## 14. Troubleshooting
+## 16. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `Aspire workload not found` | `dotnet workload install aspire` |
 | `Parameter 'AzureOpenAIName' not found` | Set user secrets (see §0) |
 | `openai` resource unhealthy | Check `az login` / resource name / RG in secrets |
+| `postgres` container not starting | Ensure Docker is running; check `docker ps` for port conflicts |
+| pgWeb not loading | Check `postgres-pgweb` resource in Aspire dashboard for errors |
+| `conferencedb` tables missing | App creates schema on startup via `EnsureCreatedAsync`; check web resource logs |
 | Web app port unknown | Get it from Aspire dashboard Resources tab |
 | Outline ingestion skipped | AI not configured — check secrets + Azure login |
 | MCP `initialize` fails | Make sure you POST to `<webUrl>/mcp` with correct JSON-RPC |
@@ -540,6 +678,129 @@ Verify the complete data flow through one topic:
 | AI answer not appearing | Check structured logs in Aspire dashboard for `QuestionAnsweringService` errors |
 | Insights not generating | Verify AI is configured; check logs for `InsightGenerationService` warnings |
 | KB count not growing | Check structured logs for ingestion errors after poll close / topic complete |
+| Data not persisting across restart | Verify `WithDataVolume()` is set on postgres; check Docker volume exists |
+| PIN gate not appearing | Ensure you're navigating to `/presenter/{SessionCode}` (not just `/presenter`) |
+| Session code unknown | Check startup logs for "Default session created: XXXXXXXX (PIN: 0000)" |
+| Session not on home page | Refresh `/` — session list is loaded from `SessionManager` |
+
+---
+
+## 17. Slide System
+
+### Verify Slides Load
+```
+# Check the startup logs in the Aspire dashboard or terminal
+# Should see: "Slides loaded: 28 slides"
+```
+
+### Presenter Slide Navigation
+1. Navigate to `/presenter/{SessionCode}` and enter the host PIN
+2. Click **Go Live** to start the session
+3. Activate the first topic (Microsoft.Extensions.AI)
+4. ✅ The center column should show a **slide preview** with the topic's first slide
+5. ✅ **Speaker notes** should appear below the preview (with 🎤 icon)
+6. Click **Next ▶** — slide advances, preview and notes update
+7. Click **◀ Previous** — slide goes back
+8. ✅ Progress shows "Slide X of Y"
+9. ✅ "Up Next" preview shows the next slide
+10. ✅ Left column topic outline auto-highlights the current topic based on slide's TopicId
+
+### Three-Column Layout Verification
+1. After verifying slides work, confirm all three columns are visible simultaneously
+2. ✅ **Left column** (~220px): Topic outline with current topic highlighted
+3. ✅ **Center column** (flex): Slide preview, up-next, speaker notes, navigation, quick poll launch
+4. ✅ **Right column** (~320px): Global Q&A feed (questions from all topics with topic badges), active poll results, insights
+5. ✅ Clicking a topic in the left column jumps to that topic's first slide
+6. ✅ Navigating slides past a topic boundary auto-activates the new topic (SyncTopicToSlide)
+7. ✅ Import section in the left column is collapsible
+
+### Display Slide Rendering
+1. Open `/display/{SessionCode}` in a separate browser window
+2. ✅ When idle (no poll/slide active), the display shows a **large QR code** with "Scan to Join" + session code + URL
+3. ✅ When a slide is active, the slide shows full-screen with a smaller QR code in the sidebar
+4. ✅ Large text, dark background, readable from back of room
+5. ✅ Progress dots at the bottom show current position
+6. Advance a slide on the presenter → ✅ display updates in real-time
+
+### Keyboard Navigation
+1. Click in the center column area on the presenter page (to focus it)
+2. Press **→** (right arrow) → slide advances
+3. Press **←** (left arrow) → slide goes back
+4. Press **Space** → slide advances
+5. Press **P** → quick-launch poll
+6. Press **Esc** → close active overlay
+7. ✅ Keyboard navigation does NOT trigger when typing in a text input (poll question, answer form)
+
+### Poll/Slide Priority
+1. While a slide is showing on the display, launch a poll
+2. ✅ The poll **replaces** the slide on the display
+3. Close the poll
+4. ✅ The slide **returns** on the display
+
+### Topic Auto-Navigation
+1. Activate a different topic (e.g., "Knowledge Engineering") on the presenter
+2. ✅ The slide automatically jumps to the **first slide** of that topic
+3. ✅ Both presenter and display update accordingly
+4. Navigate slides forward past a topic boundary (without clicking a topic)
+5. ✅ The topic auto-activates via SyncTopicToSlide — left column highlights the new topic
+
+### Speaker Notes Privacy
+1. While slides are showing, compare `/presenter/{SessionCode}` and `/display/{SessionCode}`
+2. ✅ Speaker notes (timing cues, demo instructions) appear **only** on the presenter
+3. ✅ The display shows **only** the slide content (no notes)
+
+---
+
+## 18. GitHub Repository Import
+
+### Creating a Session from GitHub Content
+
+1. Navigate to the home page (`/`)
+2. Click **"🎯 Create a Session"**
+3. Enter session details (title, code, PIN)
+4. Select **"🐙 Import from GitHub"** template
+5. Enter a GitHub repo URL: `https://github.com/JeremyLikness/dotnet-ai-scenarios`
+6. Click **"🔍 Fetch & Draft Session"**
+7. Wait for import + AI drafting (may take 10-30 seconds)
+8. ✅ Verify: Import stats show document count
+9. ✅ Verify: AI-drafted topics appear with talking points and suggested polls
+10. Optionally remove topics using ✕ button
+11. Click **"🚀 Create Session"**
+12. ✅ Verify: Redirected to presenter page with imported topics
+13. ✅ Verify: Center column in Presenter shows generated slides
+14. ✅ Verify: Display page (`/display/{code}`) shows slides when navigating
+15. ✅ Verify: Slide types include Title, Section, Content, and Poll slides
+16. ✅ Verify: Speaker notes appear for each slide in the Presenter view
+
+### Importing Content During a Session
+
+1. Open presenter dashboard for an active session
+2. Expand the **"📥 Import"** section in the left column
+3. Paste a GitHub repo URL
+4. Click **"📥 Import Repository"**
+5. ✅ Verify: Import completes, history entry appears
+6. ✅ Verify: Knowledge base record count increases
+7. Click **"➕ Add All Topics"** to add drafted topics to the session
+8. ✅ Verify: New topics appear in the Topics panel
+
+### Edge Cases
+
+- **Invalid URL**: Should show error message
+- **Rate limit**: GitHub API allows 60 requests/hour unauthenticated
+- **AI unavailable**: Fallback generates topics grouped by category from front matter
+
+### Slide Generation
+
+1. Import a GitHub repo via the Create Session page
+2. After AI drafting completes, create the session
+3. Open the Presenter dashboard → center column shows slides
+4. ✅ Verify: Title slide shows session name
+5. ✅ Verify: Section slides for each topic
+6. ✅ Verify: Content slides with talking points as bullets
+7. ✅ Verify: Poll slides for topics with suggested polls
+8. ✅ Verify: Closing "Thank You" slide
+9. Navigate through slides using Next/Prev buttons
+10. ✅ Verify: Display page updates in sync with slide navigation
 
 ---
 
@@ -557,14 +818,23 @@ BUILD & LAUNCH
 [ ] dotnet build — 0 errors, 0 warnings
 [ ] aspire run (or dotnet run --project src/ConferenceAssistant.AppHost)
 [ ] Aspire dashboard shows web + openai resources
+[ ] Console shows "Default session created: XXXXXXXX (PIN: 0000)"
 [ ] Console shows "Session loaded: The Microsoft AI Stack for .NET"
 [ ] Console shows "Ingested N outline chunks into knowledge base"
 
 PAGES
-[ ] Home (/) — 3 cards render and navigate
-[ ] Presenter (/presenter) — dashboard loads, 5 topics visible
-[ ] Session (/session/DOTNETAI-CONF) — shows waiting message
-[ ] Display (/display) — shows waiting message
+[ ] Home (/) — session hub: lists active sessions + "Create New Session" button
+[ ] Presenter (/presenter/{code}) — PIN gate prompts for host PIN, then unlocks dashboard
+[ ] Presenter dashboard — 3-column layout: topic outline (left) + slides/notes (center) + Q&A/polls/insights (right)
+[ ] All three columns visible simultaneously — no tabs
+[ ] Display (/display/{code}) — shows QR code "Scan to Join" before Go Live
+
+MULTI-SESSION
+[ ] Home page lists default session
+[ ] /create — create new session with custom code + PIN
+[ ] New session appears on home page
+[ ] Presenter PIN gate works (wrong PIN rejected, correct PIN unlocks)
+[ ] Sessions are isolated (polls/questions don't cross over)
 
 CORE FLOW
 [ ] Presenter: Go Live → status changes to Live
@@ -592,4 +862,14 @@ MCP SERVER
 [ ] POST /mcp tools/call get_session_status → session data
 [ ] POST /mcp tools/call search_session_knowledge → KB results
 [ ] .vscode/mcp.json configured for VS Code Copilot
+
+GITHUB REPOSITORY IMPORT
+[ ] /create — "🐙 Import from GitHub" template available
+[ ] Enter GitHub repo URL → "🔍 Fetch & Draft Session" imports and drafts
+[ ] Import stats show document count
+[ ] AI-drafted topics appear with talking points and polls
+[ ] "🚀 Create Session" → redirected to presenter with imported topics
+[ ] Presenter "📥 Import" section (left column) — paste URL → "📥 Import Repository" works
+[ ] KB record count increases after import
+[ ] "➕ Add All Topics" adds drafted topics to session
 ```

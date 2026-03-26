@@ -19,6 +19,8 @@ Discussion/panel format. Speaker provides a topic outline ahead of time. Agents 
 | [implementation-spec.md](implementation-spec.md) | Shovel-ready implementation guide per component |
 | [session-outline.md](session-outline.md) | Conference session outline (ingested at startup) |
 | `../data/seed-topics.json` | Pre-defined topics & poll prompts |
+| `../data/slides.md` | Markdown slide deck (parsed at startup for display + knowledge base) |
+| [slide-authoring-guide.md](slide-authoring-guide.md) | Guide for authoring slides in Markdown |
 
 ---
 
@@ -49,6 +51,17 @@ Phase 4: Bridge              Phase 5: Frontend            session-summary-workfl
   mcp-clients                  blazor-presenter           program-cs-wiring
   copilot-demo-app             blazor-session             aspire-apphost
                                blazor-display             readme-docs
+
+Phase 7: Slides
+  slide-model
+  slide-markdown-parser
+  slides-markdown-file
+  session-service-slides
+  slide-renderer
+  display-slides
+  presenter-slides
+  slide-progress
+  docs-slide-authoring-guide
 ```
 
 ---
@@ -62,3 +75,5 @@ Phase 4: Bridge              Phase 5: Frontend            session-summary-workfl
 - **MCP Streamable HTTP** transport
 - **Real DataIngestion** package (`IngestionPipeline<T>`)
 - **.NET Aspire** for observability (OpenTelemetry dashboard)
+- **Markdown-first slide authoring** — Slides authored in `data/slides.md`, not JSON. Uses Marp-inspired conventions (`---` separators, `<!-- speaker: -->` notes). Dual-purpose: same file feeds display AND knowledge base.
+- **Speaker notes are sacred** — `<!-- speaker: -->` HTML comments only shown in presenter view, never on display or attendee views, and stripped from knowledge base by Markdig.

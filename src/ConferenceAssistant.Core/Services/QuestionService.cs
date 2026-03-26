@@ -5,76 +5,58 @@ namespace ConferenceAssistant.Core.Services;
 
 public class QuestionService : IQuestionService
 {
-    private readonly ConcurrentDictionary<string, AudienceQuestion> _questions = new();
-    private readonly object _upvoteLock = new();
+    private readonly ISessionManager _sessionManager;
+    private readonly ISessionService _sessionService;
+    private readonly ConcurrentDictionary<string, byte> _wiredSessions = new();
 
     public event Action<AudienceQuestion>? QuestionReceived;
     public event Action<AudienceQuestion>? QuestionAnswered;
     public event Action<AudienceQuestion>? QuestionUpvoted;
 
+    public QuestionService(ISessionManager sessionManager, ISessionService sessionService)
+    {
+        _sessionManager = sessionManager;
+        _sessionService = sessionService;
+    }
+
+    private SessionContext GetDefaultContext()
+    {
+        var code = _sessionService.CurrentSession?.SessionCode
+            ?? throw new InvalidOperationException("No default session loaded.");
+        var ctx = _sessionManager.GetSession(code)
+            ?? throw new InvalidOperationException($"Session '{code}' not found.");
+        EnsureEventsWired(ctx);
+        return ctx;
+    }
+
+    private void EnsureEventsWired(SessionContext ctx)
+    {
+        if (_wiredSessions.TryAdd(ctx.Session.SessionCode, 0))
+        {
+            ctx.QuestionReceived += q => QuestionReceived?.Invoke(q);
+            ctx.QuestionAnswered += q => QuestionAnswered?.Invoke(q);
+            ctx.QuestionUpvoted += q => QuestionUpvoted?.Invoke(q);
+        }
+    }
+
     public Task<AudienceQuestion> SubmitQuestionAsync(string text, string? topicId = null, string? attendeeId = null)
     {
-        var question = new AudienceQuestion
-        {
-            Text = text,
-            TopicId = topicId,
-            AttendeeId = attendeeId
-        };
-
-        _questions[question.Id] = question;
-
-        QuestionReceived?.Invoke(question);
+        var question = GetDefaultContext().SubmitQuestion(text, topicId, attendeeId);
         return Task.FromResult(question);
     }
 
     public Task<AudienceQuestion?> AnswerQuestionAsync(string questionId, string answer, bool isAiGenerated = false, string authorLabel = "Presenter")
     {
-        if (!_questions.TryGetValue(questionId, out var question))
-        {
-            return Task.FromResult<AudienceQuestion?>(null);
-        }
-
-        question.Answers.Add(new Models.QuestionAnswer
-        {
-            Text = answer,
-            IsAiGenerated = isAiGenerated,
-            AuthorLabel = isAiGenerated ? "AI" : authorLabel
-        });
-
-        QuestionAnswered?.Invoke(question);
-        return Task.FromResult<AudienceQuestion?>(question);
+        var result = GetDefaultContext().AnswerQuestion(questionId, answer, isAiGenerated, isAiGenerated ? "AI" : authorLabel);
+        return Task.FromResult(result);
     }
 
     public Task UpvoteQuestionAsync(string questionId)
     {
-        if (_questions.TryGetValue(questionId, out var question))
-        {
-            lock (_upvoteLock)
-            {
-                question.Upvotes++;
-            }
-
-            QuestionUpvoted?.Invoke(question);
-        }
-
+        GetDefaultContext().UpvoteQuestion(questionId);
         return Task.CompletedTask;
     }
 
-    public IReadOnlyList<AudienceQuestion> GetQuestionsForTopic(string topicId)
-    {
-        return _questions.Values
-            .Where(q => q.TopicId == topicId)
-            .OrderByDescending(q => q.Upvotes)
-            .ToList()
-            .AsReadOnly();
-    }
-
-    public IReadOnlyList<AudienceQuestion> GetTopQuestions(int count = 10)
-    {
-        return _questions.Values
-            .OrderByDescending(q => q.Upvotes)
-            .Take(count)
-            .ToList()
-            .AsReadOnly();
-    }
+    public IReadOnlyList<AudienceQuestion> GetQuestionsForTopic(string topicId) => GetDefaultContext().GetQuestionsForTopic(topicId);
+    public IReadOnlyList<AudienceQuestion> GetTopQuestions(int count = 10) => GetDefaultContext().GetTopQuestions(count);
 }

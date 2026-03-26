@@ -14,11 +14,18 @@
     <PackageVersion Include="Microsoft.Extensions.DataIngestion" Version="10.4.0-preview.1.26160.2" />
     <PackageVersion Include="Microsoft.Extensions.DataIngestion.Abstractions" Version="10.4.0-preview.1.26160.2" />
     <PackageVersion Include="Microsoft.Extensions.DataIngestion.Markdig" Version="10.4.0-preview.1.26160.2" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers" Version="1.0.3" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="1.0.3" />
   </ItemGroup>
 
   <ItemGroup Label="Microsoft.Extensions.VectorData">
     <PackageVersion Include="Microsoft.Extensions.VectorData.Abstractions" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.73.0-preview" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Qdrant" Version="1.73.0-preview" />
+  </ItemGroup>
+
+  <ItemGroup Label="Qdrant">
+    <PackageVersion Include="Aspire.Hosting.Qdrant" Version="13.2.0" />
+    <PackageVersion Include="Aspire.Qdrant.Client" Version="13.2.0" />
   </ItemGroup>
 
   <ItemGroup Label="Microsoft.Agents (Agent Framework)">
@@ -35,9 +42,9 @@
   </ItemGroup>
 
   <ItemGroup Label="Aspire">
-    <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.1.2" />
-    <PackageVersion Include="Aspire.Hosting.Azure.CognitiveServices" Version="13.1.2" />
-    <PackageVersion Include="Aspire.Azure.AI.OpenAI" Version="13.1.2-preview.1.26125.13" />
+    <PackageVersion Include="Aspire.Hosting.Azure.CognitiveServices" Version="13.2.0" />
+    <PackageVersion Include="Aspire.Hosting.DevTunnels" Version="13.2.0" />
+    <PackageVersion Include="Aspire.Azure.AI.OpenAI" Version="13.2.0-preview.1.26170.3" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.5.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
@@ -45,6 +52,17 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.12.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="PostgreSQL">
+    <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.2.0" />
+    <PackageVersion Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.2.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="QR Code">
+    <PackageVersion Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">

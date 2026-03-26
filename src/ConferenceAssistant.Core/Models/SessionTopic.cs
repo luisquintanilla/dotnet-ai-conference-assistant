@@ -8,6 +8,7 @@ public class SessionTopic
     public int Order { get; set; }
     public TopicStatus Status { get; set; } = TopicStatus.Upcoming;
     public List<string> TalkingPoints { get; set; } = [];
+    public List<Slide> Slides { get; set; } = [];
     public List<SuggestedPoll> SuggestedPolls { get; set; } = [];
 }
 

@@ -1,7 +1,9 @@
 namespace ConferenceAssistant.Mcp.Clients;
 
-public interface IMcpContentClient
+public interface IMcpContentClient : IAsyncDisposable
 {
-    Task<string?> FetchContentAsync(string serverName, string toolName, Dictionary<string, object?>? arguments = null);
-    Task<IReadOnlyList<string>> ListToolsAsync(string serverName);
+    Task InitializeAsync(CancellationToken ct = default);
+    Task<string?> SearchDocsAsync(string query, CancellationToken ct = default);
+    Task<string?> FetchDocAsync(string url, CancellationToken ct = default);
+    Task<string?> AskDeepWikiAsync(string repo, string question, CancellationToken ct = default);
 }

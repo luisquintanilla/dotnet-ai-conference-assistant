@@ -8,8 +8,11 @@ public class PollGenerationWorkflow(IChatClient chatClient, AgentTools tools)
 {
     public async Task<string> ExecuteAsync(string topicId)
     {
-        var options = new ChatOptions { Tools = tools.AsToolList() };
-
+        var options = new ChatOptions
+        {
+            Tools = [tools.GetCurrentTopic, tools.SearchKnowledge, tools.GetAudienceQuestions,
+                     tools.GetAllPollResults, tools.GetAllInsights, tools.CreatePoll]
+        };
 
         var messages = new List<ChatMessage>
         {
@@ -18,6 +21,6 @@ public class PollGenerationWorkflow(IChatClient chatClient, AgentTools tools)
         };
 
         var response = await chatClient.GetResponseAsync(messages, options);
-        return response.Text;
+        return response.Text ?? "Unable to generate poll.";
     }
 }

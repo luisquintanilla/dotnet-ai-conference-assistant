@@ -2,7 +2,7 @@
 
 ## 1. Product Overview
 
-**Conference Pulse** is a live, interactive presentation platform that replaces traditional slides with an AI-powered web experience. It demonstrates six Microsoft AI technologies working together by being the actual demo — the audience participates in the app while the speaker explains how it works.
+**Conference Pulse** is a live, interactive presentation platform that evolves the "living presentation" concept beyond traditional slides. The app **is** the presentation — but it now includes Markdown-authored visual content that's richer than anything PowerPoint offers: dynamic, navigable slides with speaker notes, code layouts, and topic-aware content — all rendered full-screen on the big screen while the speaker controls pacing from the presenter view. This isn't going back to static decks — it's structured visual content layered on top of an AI-powered web experience. It demonstrates six Microsoft AI technologies working together by being the actual demo — the audience participates in the app while the speaker explains how it works.
 
 The app generates polls, analyzes responses, fetches external documentation, ingests knowledge in real-time, and synthesizes insights — all powered by agents, all visible to the audience, all running live.
 
@@ -43,6 +43,11 @@ The app generates polls, analyzes responses, fetches external documentation, ing
 | S5 | As a speaker, I can advance to the next topic | Topic changes; display updates; knowledge context shifts |
 | S6 | As a speaker, I can see agent activity in real-time | Activity log shows what each agent is doing, which tools it's calling |
 | S7 | As a speaker, I can trigger a session summary | Triggers SessionSummaryWorkflow; summary streams to display |
+| S8 | As a speaker, I can author presentation content in Markdown so that I write naturally without editing JSON | Slides authored in `data/slides.md` using `---` separators; parsed at startup |
+| S9 | As a speaker, I can navigate slides from the presenter view with keyboard shortcuts so that I control pacing | Next/prev/jump-to-slide via keyboard; display updates in real-time |
+| S10 | As a speaker, I see speaker notes that the audience doesn't, including timing cues and demo instructions | `<!-- speaker: -->` comments visible only in presenter view; hidden from display and attendees |
+| S11 | As a speaker, I can see what the display is currently showing (slide preview in presenter view) | Presenter view includes a live preview of the current display slide |
+| S12 | As a speaker, I can see the next upcoming slide for smooth transitions | Presenter view shows next slide preview alongside current slide |
 
 ### Attendee Stories
 
@@ -63,6 +68,9 @@ The app generates polls, analyzes responses, fetches external documentation, ing
 | D3 | As a display, I show AI-generated insights | Insight panel updates when agents produce analysis |
 | D4 | As a display, I show the question feed | Top questions visible, sorted by upvotes |
 | D5 | As a display, I show the streaming session summary | Summary text streams in word-by-word during the closer |
+| D6 | As a display, I show the current slide content full-screen with large, readable text | Slide content renders at display-optimized font sizes; readable from back of room |
+| D7 | As a display, I show slides with different layouts based on content type (title, bullets, code) | Layout auto-detected from slide content; title slides centered, code slides use monospace |
+| D8 | As a display, I show a subtle progress indicator for slide position | Progress bar or "3 / 12" indicator visible but unobtrusive |
 
 ---
 
@@ -122,6 +130,15 @@ The app generates polls, analyzes responses, fetches external documentation, ing
 - Knowledge Curator can answer questions using RAG + MCP
 - Answers appear in the question feed
 
+### FR11: Slide System
+- Slide deck authored in Markdown (`data/slides.md`)
+- Parsed at startup by `SlideMarkdownParser`
+- Navigated by presenter (next/prev/jump-to-slide)
+- Rendered full-screen on display
+- Slides map to topics via `<!-- topic: id -->` directives
+- Speaker notes (`<!-- speaker: -->`) visible only in presenter view
+- Active poll takes display priority over slides
+
 ---
 
 ## 5. Non-Functional Requirements
@@ -135,6 +152,7 @@ The app generates polls, analyzes responses, fetches external documentation, ing
 | Session duration | 60-90 min (all in-memory, no persistence needed) |
 | Browser support | Modern mobile browsers (Chrome, Safari, Edge) |
 | Accessibility | WCAG 2.1 AA for attendee and display views |
+| Slide transition latency | < 200ms via SignalR |
 
 ---
 

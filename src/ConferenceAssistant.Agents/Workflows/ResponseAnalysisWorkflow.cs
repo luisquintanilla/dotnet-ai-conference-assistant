@@ -8,8 +8,11 @@ public class ResponseAnalysisWorkflow(IChatClient chatClient, AgentTools tools)
 {
     public async Task<string> ExecuteAsync(string pollId)
     {
-        var options = new ChatOptions { Tools = tools.AsToolList() };
-
+        var options = new ChatOptions
+        {
+            Tools = [tools.GetPollResults, tools.SearchKnowledge,
+                     tools.GetAllPollResults, tools.SaveInsight]
+        };
 
         var messages = new List<ChatMessage>
         {
@@ -18,6 +21,6 @@ public class ResponseAnalysisWorkflow(IChatClient chatClient, AgentTools tools)
         };
 
         var response = await chatClient.GetResponseAsync(messages, options);
-        return response.Text;
+        return response.Text ?? "Unable to analyze poll results.";
     }
 }

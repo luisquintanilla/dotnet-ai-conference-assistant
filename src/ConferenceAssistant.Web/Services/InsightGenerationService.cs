@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using ConferenceAssistant.Core.Models;
 using ConferenceAssistant.Core.Services;
@@ -8,25 +9,30 @@ namespace ConferenceAssistant.Web.Services;
 
 public class InsightGenerationService(
     IChatClient chatClient,
-    IInsightService insightService,
-    IPollService pollService,
-    IQuestionService questionService,
-    ISessionService sessionService,
+    ISessionManager sessionManager,
     ISemanticSearchService searchService,
     ILogger<InsightGenerationService> logger) : IInsightGenerationService
 {
-    public async Task GeneratePollInsightsAsync(string pollId)
+    private readonly ConcurrentDictionary<string, DateTime> _lastInsightTime = new();
+    private static readonly TimeSpan InsightCooldown = TimeSpan.FromSeconds(30);
+
+    private SessionContext GetContext(string sessionCode) =>
+        sessionManager.GetSession(sessionCode)
+            ?? throw new InvalidOperationException($"Session '{sessionCode}' not found.");
+
+    public async Task GeneratePollInsightsAsync(string pollId, string sessionCode)
     {
         try
         {
-            var poll = pollService.GetPoll(pollId);
+            var ctx = GetContext(sessionCode);
+            var poll = ctx.GetPoll(pollId);
             if (poll is null)
             {
-                logger.LogError("Cannot generate poll insights: poll {PollId} not found", pollId);
+                logger.LogError("Cannot generate poll insights: poll {PollId} not found in session {Code}", pollId, sessionCode);
                 return;
             }
 
-            var results = pollService.GetPollResults(pollId);
+            var results = ctx.GetPollResults(pollId);
             if (results.Count == 0) return;
 
             var sb = new StringBuilder();
@@ -39,10 +45,19 @@ public class InsightGenerationService(
             }
             sb.AppendLine($"Total responses: {total}");
 
+            var otherResponses = ctx.GetOtherResponses(pollId);
+            if (otherResponses.Count > 0)
+            {
+                sb.AppendLine("\"Other\" responses from attendees:");
+                foreach (var text in otherResponses)
+                    sb.AppendLine($"  - \"{text}\"");
+            }
+
             var prompt = $"""
                 Analyze these live poll results from a conference session. Provide 1-2 short, 
                 actionable insights about what the audience thinks. Be specific and reference 
-                the actual numbers. Keep it under 3 sentences.
+                the actual numbers. If there are "Other" responses, identify themes or patterns 
+                in the free-text answers. Keep it under 3 sentences.
 
                 {sb}
                 """;
@@ -56,14 +71,14 @@ public class InsightGenerationService(
             var content = response.Text?.Trim();
             if (!string.IsNullOrWhiteSpace(content))
             {
-                await insightService.AddInsightAsync(new Insight
+                ctx.AddInsight(new Insight
                 {
                     TopicId = poll.TopicId,
                     PollId = pollId,
                     Content = content,
                     Type = InsightType.PollAnalysis
                 });
-                logger.LogInformation("Generated poll insight for poll {PollId}", pollId);
+                logger.LogInformation("Generated poll insight for poll {PollId} in session {Code}", pollId, sessionCode);
             }
         }
         catch (Exception ex)
@@ -72,24 +87,24 @@ public class InsightGenerationService(
         }
     }
 
-    public async Task GenerateTopicInsightsAsync(string topicId)
+    public async Task GenerateTopicInsightsAsync(string topicId, string sessionCode)
     {
         try
         {
-            var topic = sessionService.CurrentSession?.Topics.FirstOrDefault(t => t.Id == topicId);
+            var ctx = GetContext(sessionCode);
+            var topic = ctx.Session.Topics.FirstOrDefault(t => t.Id == topicId);
             if (topic is null) return;
 
             var sb = new StringBuilder();
             sb.AppendLine($"# Topic: {topic.Title}");
 
-            // Gather poll data
-            var polls = pollService.GetPollsForTopic(topicId);
+            var polls = ctx.GetPollsForTopic(topicId);
             if (polls.Count > 0)
             {
                 sb.AppendLine("\n## Polls:");
                 foreach (var poll in polls)
                 {
-                    var results = pollService.GetPollResults(poll.Id);
+                    var results = ctx.GetPollResults(poll.Id);
                     var total = results.Values.Sum();
                     sb.AppendLine($"\nQ: {poll.Question} ({total} responses)");
                     foreach (var (option, count) in results.OrderByDescending(r => r.Value))
@@ -100,18 +115,16 @@ public class InsightGenerationService(
                 }
             }
 
-            // Gather questions
-            var questions = questionService.GetQuestionsForTopic(topicId);
+            var questions = ctx.GetQuestionsForTopic(topicId);
             if (questions.Count > 0)
             {
                 sb.AppendLine("\n## Audience Questions:");
                 foreach (var q in questions.OrderByDescending(q => q.Upvotes).Take(10))
                 {
                     sb.AppendLine($"- [{q.Upvotes} votes] {q.Text}");
-                    var answers = q.Answers;
-                    if (answers.Count > 0)
+                    if (q.Answers.Count > 0)
                     {
-                        foreach (var a in answers)
+                        foreach (var a in q.Answers)
                         {
                             var badge = a.IsAiGenerated ? "[AI]" : "[Human]";
                             sb.AppendLine($"  Answer {badge}: {a.Text}");
@@ -120,13 +133,12 @@ public class InsightGenerationService(
                 }
             }
 
-            // Search knowledge base for additional context
-            var kbResults = await searchService.SearchAsync($"topic {topic.Title}", topK: 3, sourceFilter: "outline");
+            var kbResults = await searchService.SearchAsync($"topic {topic.Title}", topK: 3);
             if (kbResults.Count > 0)
             {
                 sb.AppendLine("\n## Session Context:");
                 foreach (var r in kbResults)
-                    sb.AppendLine(r.Summary ?? r.Content);
+                    sb.AppendLine(r.Content);
             }
 
             var prompt = $"""
@@ -146,7 +158,7 @@ public class InsightGenerationService(
             var content = response.Text?.Trim();
             if (!string.IsNullOrWhiteSpace(content))
             {
-                await insightService.AddInsightAsync(new Insight
+                ctx.AddInsight(new Insight
                 {
                     TopicId = topicId,
                     Content = content,
@@ -155,7 +167,7 @@ public class InsightGenerationService(
                 logger.LogInformation("Generated topic summary insight for {TopicId}", topicId);
             }
 
-            // Also detect knowledge gaps from unanswered/highly-upvoted questions
+            // Detect knowledge gaps from unanswered/highly-upvoted questions
             var gapQuestions = questions.Where(q => q.Upvotes >= 2 || q.Answers.Count == 0).ToList();
             if (gapQuestions.Count > 0)
             {
@@ -170,7 +182,7 @@ public class InsightGenerationService(
                 var gapContent = gapResponse.Text?.Trim();
                 if (!string.IsNullOrWhiteSpace(gapContent))
                 {
-                    await insightService.AddInsightAsync(new Insight
+                    ctx.AddInsight(new Insight
                     {
                         TopicId = topicId,
                         Content = gapContent,
@@ -182,6 +194,63 @@ public class InsightGenerationService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to generate topic insights for {TopicId}", topicId);
+        }
+    }
+
+    public async Task GenerateQuestionInsightsAsync(string topicId, string sessionCode)
+    {
+        if (_lastInsightTime.TryGetValue(topicId, out var lastTime)
+            && DateTime.UtcNow - lastTime < InsightCooldown)
+        {
+            logger.LogDebug("Skipping question insight for {TopicId} — cooldown active", topicId);
+            return;
+        }
+
+        try
+        {
+            var ctx = GetContext(sessionCode);
+            var topic = ctx.Session.Topics.FirstOrDefault(t => t.Id == topicId);
+            if (topic is null) return;
+
+            var questions = ctx.GetQuestionsForTopic(topicId);
+            if (questions.Count < 3) return;
+
+            var questionList = string.Join("\n", questions
+                .OrderByDescending(q => q.Upvotes)
+                .Take(10)
+                .Select(q => $"[{q.Upvotes} votes] {q.Text}"));
+
+            var prompt = $"""
+                These are audience questions from a live conference session on "{topic.Title}".
+                Identify the main theme or pattern in what the audience is asking about.
+                Provide a brief, actionable insight (1-2 sentences) about what the audience
+                wants to learn more about.
+
+                {questionList}
+                """;
+
+            var response = await chatClient.GetResponseAsync(
+            [
+                new(ChatRole.System, "You are a conference analytics assistant. Generate a brief insight about audience curiosity patterns."),
+                new(ChatRole.User, prompt)
+            ]);
+
+            var content = response.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                ctx.AddInsight(new Insight
+                {
+                    TopicId = topicId,
+                    Content = content,
+                    Type = InsightType.AudienceTrend
+                });
+                _lastInsightTime[topicId] = DateTime.UtcNow;
+                logger.LogInformation("Generated question-based insight for topic {TopicId}", topicId);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to generate question insight for {TopicId}", topicId);
         }
     }
 }
