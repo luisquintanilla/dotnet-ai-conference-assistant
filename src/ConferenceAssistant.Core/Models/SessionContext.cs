@@ -84,6 +84,19 @@ public class SessionContext
         SessionEnded?.Invoke();
     }
 
+    public void RestartSession()
+    {
+        lock (_lock)
+        {
+            Session.Status = SessionStatus.Setup;
+            Session.StartedAt = null;
+            Session.EndedAt = null;
+            Session.ActiveTopicId = null;
+            foreach (var topic in Session.Topics)
+                topic.Status = TopicStatus.Upcoming;
+        }
+    }
+
     // --- Topic Navigation ---
     public void ActivateTopic(string topicId)
     {

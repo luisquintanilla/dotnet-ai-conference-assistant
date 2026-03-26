@@ -44,7 +44,7 @@ public class SessionService : ISessionService
     public async Task LoadSessionAsync(string seedTopicsPath)
     {
         var json = await File.ReadAllTextAsync(seedTopicsPath);
-        var context = _sessionManager.CreateSessionFromSeed(json, "0000");
+        var context = _sessionManager.CreateSessionFromSeed(json, "1234");
         _defaultSessionCode = context.Session.SessionCode;
 
         // Wire context events to service events for backward compat

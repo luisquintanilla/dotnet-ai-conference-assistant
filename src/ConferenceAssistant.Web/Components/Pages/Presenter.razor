@@ -72,6 +72,10 @@
                 {
                     <button class="btn btn-danger" @onclick="EndSession">⏹ End Session</button>
                 }
+                else if (session.Status == SessionStatus.Completed)
+                {
+                    <button class="btn btn-outline" @onclick="RestartSession">🔄 Restart Session</button>
+                }
             </div>
         </div>
 
@@ -858,6 +862,12 @@
     private void EndSession()
     {
         sessionContext?.EndSession();
+        RefreshState();
+    }
+
+    private void RestartSession()
+    {
+        sessionContext?.RestartSession();
         RefreshState();
     }
 

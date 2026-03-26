@@ -411,7 +411,7 @@ if (sessionManager.GetSession(defaultSessionCode) is null)
     app.Logger.LogInformation("Default session loaded: {Title} (code: {Code}, PIN: {Pin})",
         sessionService.CurrentSession?.Title,
         sessionService.CurrentSession?.SessionCode,
-        "0000");
+        "1234");
 }
 else
 {
