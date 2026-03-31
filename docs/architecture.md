@@ -35,7 +35,7 @@
 │  └───────────────────────────────────────────────────┘     │
 │                                                            │
 │  ┌── VectorData ─────────────────────────────────────┐     │
-│  │  PostgresVectorStore (pgvector, auto-embedding)   │     │
+│  │  QdrantVectorStore (Qdrant, auto-embedding)       │     │
 │  │  VectorStoreCollection + SearchAsync()            │     │
 │  └───────────────────────────────────────────────────┘     │
 │                                                            │
@@ -45,13 +45,13 @@
 │  └───────────────────────────────────────────────────┘     │
 │                                                            │
 │  ┌── MCP ────────────────────────────────────────────┐     │
-│  │  SERVER (/mcp): 6 tools + 2 resources             │     │
+│  │  SERVER (/mcp): 10 tools (8 conference + 2 KB)    │     │
 │  │  CLIENTS: Microsoft Learn, DeepWiki               │     │
 │  └───────────────────────────────────────────────────┘     │
 └────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────┐
-│  Copilot SDK Demo (console app)                             │
+│  Copilot SDK Demo (console app) — planned, not yet impl'd  │
 │  CopilotClient → McpServers → "Summarize this session"     │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -109,9 +109,7 @@ dotnet-ai-conference-assistant/
 │   │       └── css/
 │   │           └── app.css
 │   │
-│   ├── ConferenceAssistant.CopilotDemo/          # Copilot SDK closer
-│   │   ├── ConferenceAssistant.CopilotDemo.csproj
-│   │   └── Program.cs
+│   ├── ConferenceAssistant.CopilotDemo/          # Copilot SDK closer (planned, not yet implemented)
 │   │
 │   ├── ConferenceAssistant.Agents/               # Agent Framework layer
 │   │   ├── ConferenceAssistant.Agents.csproj
@@ -138,14 +136,21 @@ dotnet-ai-conference-assistant/
 │   │   │   └── McpContentIngestionPipeline.cs
 │   │   ├── Readers/
 │   │   │   └── TextContentReader.cs
-│   │   ├── SemanticSearchService.cs
+│   │   ├── Services/
+│   │   │   ├── SemanticSearchService.cs
+│   │   │   ├── ISemanticSearchService.cs
+│   │   │   ├── IIngestionService.cs
+│   │   │   ├── IngestionService.cs
+│   │   │   └── IIngestionTracker.cs
 │   │   └── DependencyInjection.cs
 │   │
 │   ├── ConferenceAssistant.Mcp/                  # MCP server + clients
 │   │   ├── ConferenceAssistant.Mcp.csproj
 │   │   ├── Server/
-│   │   │   ├── ConferenceTools.cs
 │   │   │   └── ConferenceResources.cs
+│   │   ├── Tools/
+│   │   │   ├── ConferenceTools.cs
+│   │   │   └── KnowledgeTools.cs
 │   │   ├── Clients/
 │   │   │   └── McpClientFactory.cs
 │   │   └── DependencyInjection.cs
@@ -165,7 +170,6 @@ dotnet-ai-conference-assistant/
 │           ├── SessionManager.cs
 │           ├── PollService.cs
 │           ├── SessionService.cs
-│           ├── InMemoryStore.cs
 │           └── SlideMarkdownParser.cs
 │
 ├── data/
@@ -302,8 +306,7 @@ Each project lists only its DIRECT package references. Transitive dependencies a
 <PackageReference Include="Microsoft.Extensions.DataIngestion.Markdig" />
 <PackageReference Include="Microsoft.Extensions.VectorData.Abstractions" />
 <PackageReference Include="Microsoft.ML.Tokenizers" />
-<PackageReference Include="Microsoft.SemanticKernel.Connectors.PgVector" />
-<PackageReference Include="Npgsql" />
+<PackageReference Include="Microsoft.SemanticKernel.Connectors.Qdrant" />
 ```
 Project reference: `ConferenceAssistant.Core`
 
@@ -326,16 +329,18 @@ Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`,
 ### ConferenceAssistant.Web
 ```xml
 <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+<PackageReference Include="Aspire.Qdrant.Client" />
 <PackageReference Include="Microsoft.EntityFrameworkCore" />
+<PackageReference Include="Microsoft.Extensions.AI" />
 <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
-<PackageReference Include="Microsoft.Agents.AI.OpenAI" />
-<PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" />
-<PackageReference Include="Microsoft.Extensions.DataIngestion" />
+<PackageReference Include="Aspire.Azure.AI.OpenAI" />
+<PackageReference Include="ModelContextProtocol.AspNetCore" />
+<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
 <PackageReference Include="QRCoder" />
 ```
 Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`, `ConferenceAssistant.Agents`, `ConferenceAssistant.Mcp`
 
-### ConferenceAssistant.CopilotDemo
+### ConferenceAssistant.CopilotDemo *(planned — not yet implemented)*
 ```xml
 <PackageReference Include="GitHub.Copilot.SDK" />
 ```
@@ -345,18 +350,21 @@ Project references: `ConferenceAssistant.Core`, `ConferenceAssistant.Ingestion`,
 <PackageReference Include="Aspire.Hosting.Azure.CognitiveServices" />
 <PackageReference Include="Aspire.Hosting.DevTunnels" />
 <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+<PackageReference Include="Aspire.Hosting.Qdrant" />
 ```
 Project reference: `ConferenceAssistant.Web` (as Aspire resource)
 
-The AppHost provisions a PostgreSQL container using the `pgvector/pgvector:pg17` image, adds a pgWeb admin container for database inspection, and creates the `conferencedb` database:
+The AppHost provisions a PostgreSQL container for relational data, a Qdrant container for vector/embedding storage, and a pgWeb admin container for database inspection:
 ```csharp
 var postgres = builder.AddPostgres("postgres")
-    .WithImage("pgvector/pgvector")
-    .WithImageTag("pg17")
     .WithPgWeb()
     .WithDataVolume();
 
 var conferenceDb = postgres.AddDatabase("conferencedb");
+
+var qdrant = builder.AddQdrant("qdrant")
+    .WithDataVolume()
+    .WithLifetime(ContainerLifetime.Persistent);
 ```
 
 The web project receives a reference to `conferenceDb` and waits for it to be ready before starting.
@@ -412,14 +420,14 @@ Speaker clicks "Generate Poll"
 Speaker clicks "Close Poll & Analyze"
   → PollService.ClosePoll()
     → ResponseIngestionPipeline ingests all responses
-      → Chunked, sentiment-enriched, stored in PostgresVectorStore (pgvector)
+      → Chunked, sentiment-enriched, stored in QdrantVectorStore
     → SessionPersistenceService saves poll + responses to PostgreSQL
     → ResponseAnalysisWorkflow starts
       → ResponseAnalyst agent:
           1. Calls get_poll_results tool → tallied results
           2. Searches vector store for audience context
           3. Generates insight via IChatClient
-          4. Calls store_insight tool → InMemoryStore + PostgreSQL
+          4. Calls store_insight tool → PostgreSQL
       → KnowledgeCurator agent (handoff):
           1. Searches vector store for related content
           2. Optionally calls Microsoft Learn MCP for docs
@@ -496,12 +504,13 @@ The app uses a **hybrid persistence architecture** combining PostgreSQL (relatio
 
 ### PostgreSQL Infrastructure
 
-The Aspire AppHost provisions a PostgreSQL container using `pgvector/pgvector:pg17`:
+The Aspire AppHost provisions PostgreSQL and Qdrant containers:
 
-- **PostgreSQL server** — container with pgvector extension pre-installed
+- **PostgreSQL server** — container for relational data (sessions, polls, Q&A, insights)
 - **Data volume** — `WithDataVolume()` persists data across container restarts
 - **pgWeb** — `WithPgWeb()` adds a browser-based database admin UI (visible in Aspire dashboard)
 - **conferencedb** — named database for all application data
+- **Qdrant** — vector database for semantic search, with persistent data volume and `ContainerLifetime.Persistent`
 
 ### EF Core — Relational Persistence
 
@@ -522,22 +531,18 @@ JSONB columns store complex types (`List<string>`, `List<SuggestedPoll>`) as nat
 
 Schema is auto-created on startup via `EnsureCreatedAsync` — no migrations needed.
 
-### pgvector — Vector Persistence
+### Qdrant — Vector Persistence
 
-`PostgresVectorStore` from `Microsoft.SemanticKernel.Connectors.PgVector` replaces the previous `InMemoryVectorStore`:
+`QdrantVectorStore` from `Microsoft.SemanticKernel.Connectors.Qdrant` provides vector storage for semantic search:
 
-- **Collection name**: `conference_knowledge` (PostgreSQL naming convention)
+- **Collection name**: `conference_knowledge`
 - **Record model**: `ConferenceRecord` with 1536-dimensional float vectors
-- **Index**: HNSW (Hierarchical Navigable Small World) for fast approximate nearest-neighbor search
-- **Distance metric**: Cosine distance
-- **NpgsqlDataSource**: Built with `UseVector()` to enable pgvector type mapping
+- **Distance metric**: Cosine similarity
+- **Qdrant client**: `QdrantClient` injected via Aspire's `Aspire.Qdrant.Client` integration
+- **Persistent storage**: Qdrant container uses `WithDataVolume()` + `ContainerLifetime.Persistent`
 
 ```csharp
-var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-dataSourceBuilder.UseVector();  // Enable pgvector extension
-var dataSource = dataSourceBuilder.Build();
-
-var vectorStore = new PostgresVectorStore(dataSource, ownsDataSource: false);
+var vectorStore = new QdrantVectorStore(qdrantClient, ownsClient: false, storeOptions);
 var collection = vectorStore.GetCollection<string, ConferenceRecord>("conference_knowledge");
 ```
 

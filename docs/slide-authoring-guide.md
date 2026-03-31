@@ -68,7 +68,9 @@ Save this as `data/slides.md`, restart the app, and open `/display` to see your 
 
 ### Details on separators
 
-The `---` separator must appear **on its own line** with no other content (optional trailing whitespace is fine). Inside a fenced code block, `---` is treated as code and won't split the slide.
+The `---` separator must appear **on its own line** with no other content (optional trailing whitespace is fine).
+
+> **⚠️ Note:** The parser does not have code-fence-aware splitting. A bare `---` line inside a fenced code block **will** be treated as a slide separator. In practice this is rarely an issue because `---` seldom appears alone on a line within code. If you need `---` inside a code block, add a leading space or surrounding content on the same line to prevent it from matching.
 
 ### Details on speaker notes
 
@@ -105,6 +107,8 @@ The frontmatter is **not** rendered as a slide. Your first real slide starts aft
 ## Slide Types
 
 The parser automatically classifies each slide based on its visible content (headings, bullets, code). Here are the five types and the Markdown that produces them.
+
+> **Note:** The `SlideType` enum also includes a `Poll` type, but it is not assigned by the Markdown parser. Poll slides are created programmatically at runtime when a poll is launched.
 
 ### 1. Title Slide
 
@@ -414,7 +418,7 @@ The richer your slide content, the smarter the AI agents become. When someone in
 | Mistake | Symptom | Fix |
 |---|---|---|
 | Missing `---` separator | Two slides merge into one | Add `---` on its own line between slides |
-| `---` inside a code block | Slide splits unexpectedly | This shouldn't happen (code fences are respected), but double-check your fence markers |
+| `---` inside a code block | Slide splits unexpectedly | The parser does not skip `---` inside code fences. Add a leading space or surrounding content so the line isn't a bare `---`. |
 | Forgetting the closing `-->` | Speaker notes leak into visible content | Ensure every `<!-- speaker:` has a matching `-->` |
 | Too many bullets | Text overflows or shrinks | Keep to 5–6 bullets max per slide |
 | Code block too long | Audience can't read from the back | Keep to 5–10 lines; trim to the essential parts |
@@ -540,3 +544,14 @@ This produces:
 5. A **Content** slide (H2 + bullet list) — the knowledge base concept.
 
 All five slides are mapped to topic `knowledge`, so activating that topic in the presenter dashboard navigates straight to slide #1 of this segment.
+
+---
+
+## Related Documentation
+
+- [Getting Started](getting-started.md) — setup, configuration, and first run
+- [Presenter Guide](presenter-guide.md) — how to use the presenter dashboard during a live talk
+- [Tutorial: Customize for Your Talk](tutorials/03-customize-for-your-talk.md) — adapt topics, slides, and content for your presentation
+- [Tutorial: Running a Live Demo](tutorials/02-running-a-live-demo.md) — step-by-step walkthrough of a live session
+- [Configuration](configuration.md) — environment variables and app settings
+- [Architecture](architecture.md) — how slides, agents, and the knowledge base fit together
