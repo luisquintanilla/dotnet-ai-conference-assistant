@@ -3,10 +3,14 @@
     <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
+  <ItemGroup Label="Microsoft.Maui.AI">
+    <PackageVersion Include="Microsoft.Maui.AI.Attributes" Version="0.1.0-ci.20260423.29" />
+  </ItemGroup>
+
   <ItemGroup Label="Microsoft.Extensions.AI">
-    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.4.0" />
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.4.0" />
-    <PackageVersion Include="Microsoft.Extensions.AI.Evaluation" Version="10.4.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.4.1" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.4.1" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Evaluation" Version="10.4.1" />
     <PackageVersion Include="Azure.AI.OpenAI" Version="2.2.0-beta.4" />
   </ItemGroup>
 

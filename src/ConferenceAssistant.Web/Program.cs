@@ -3,7 +3,6 @@ using Microsoft.Extensions.AI;
 using Npgsql;
 using ConferenceAssistant.Core.Services;
 using ConferenceAssistant.Ingestion.Services;
-using ConferenceAssistant.Agents.Tools;
 using ConferenceAssistant.Agents.Workflows;
 using ConferenceAssistant.Mcp.Clients;
 using ConferenceAssistant.Web.Components;
@@ -81,9 +80,8 @@ builder.Services.AddSingleton<IContentImportService, ContentImportService>();
 builder.Services.AddSingleton<ISlideGenerationService, SlideGenerationService>();
 
 // ---------------------------------------------------------------------------
-// Agent Tools + Workflows
+// Agent Workflows (tool classes are static — no DI registration needed)
 // ---------------------------------------------------------------------------
-builder.Services.AddSingleton<AgentTools>();
 builder.Services.AddSingleton<PollGenerationWorkflow>();
 builder.Services.AddSingleton<ResponseAnalysisWorkflow>();
 builder.Services.AddSingleton<SessionSummaryWorkflow>();
