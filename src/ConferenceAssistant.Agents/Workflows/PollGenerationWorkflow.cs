@@ -1,17 +1,28 @@
 using Microsoft.Extensions.AI;
 using ConferenceAssistant.Agents.Definitions;
 using ConferenceAssistant.Agents.Tools;
+using Microsoft.Maui.AI.Attributes;
 
 namespace ConferenceAssistant.Agents.Workflows;
 
-public class PollGenerationWorkflow(IChatClient chatClient, AgentTools tools)
+// Full poll access (read+write), read-only insights, plus session/knowledge/questions.
+// IncludeTools on mixed-access classes prevents accidental inclusion of new writable tools.
+// The assembly-wide ConferenceAssistantAgentsToolContext.Default.Tools
+// also contains all tools if a single context is preferred.
+[AIToolSource(typeof(AgentPollTools))]
+[AIToolSource(typeof(AgentInsightTools), IncludeTools = [nameof(AgentInsightTools.GetAllInsights)])]
+[AIToolSource(typeof(AgentSessionTools))]
+[AIToolSource(typeof(AgentKnowledgeTools))]
+[AIToolSource(typeof(AgentQuestionTools))]
+partial class PollGenerationTools : AIToolContext { }
+
+public class PollGenerationWorkflow(IChatClient chatClient)
 {
     public async Task<string> ExecuteAsync(string topicId)
     {
         var options = new ChatOptions
         {
-            Tools = [tools.GetCurrentTopic, tools.SearchKnowledge, tools.GetAudienceQuestions,
-                     tools.GetAllPollResults, tools.GetAllInsights, tools.CreatePoll]
+            Tools = [.. PollGenerationTools.Default.Tools]
         };
 
         var messages = new List<ChatMessage>

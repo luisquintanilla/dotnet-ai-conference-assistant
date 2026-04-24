@@ -1,17 +1,27 @@
 using Microsoft.Extensions.AI;
 using ConferenceAssistant.Agents.Definitions;
 using ConferenceAssistant.Agents.Tools;
+using Microsoft.Maui.AI.Attributes;
 
 namespace ConferenceAssistant.Agents.Workflows;
 
-public class ResponseAnalysisWorkflow(IChatClient chatClient, AgentTools tools)
+// Read-only polls (IncludeTools prevents new writable poll tools from leaking in),
+// full insight access (read+write), plus knowledge.
+// The assembly-wide ConferenceAssistantAgentsToolContext.Default.Tools
+// also contains all tools if a single context is preferred.
+[AIToolSource(typeof(AgentPollTools), IncludeTools = [
+    nameof(AgentPollTools.GetPollResults), nameof(AgentPollTools.GetAllPollResults)])]
+[AIToolSource(typeof(AgentInsightTools))]
+[AIToolSource(typeof(AgentKnowledgeTools))]
+partial class ResponseAnalysisTools : AIToolContext { }
+
+public class ResponseAnalysisWorkflow(IChatClient chatClient)
 {
     public async Task<string> ExecuteAsync(string pollId)
     {
         var options = new ChatOptions
         {
-            Tools = [tools.GetPollResults, tools.SearchKnowledge,
-                     tools.GetAllPollResults, tools.SaveInsight]
+            Tools = [.. ResponseAnalysisTools.Default.Tools]
         };
 
         var messages = new List<ChatMessage>

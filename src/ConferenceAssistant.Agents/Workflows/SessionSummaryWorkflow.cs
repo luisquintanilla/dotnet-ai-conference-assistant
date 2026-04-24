@@ -2,8 +2,24 @@ using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using ConferenceAssistant.Agents.Tools;
+using Microsoft.Maui.AI.Attributes;
 
 namespace ConferenceAssistant.Agents.Workflows;
+
+// Per sub-agent contexts: IncludeTools gives each agent only the reads it needs.
+// The assembly-wide ConferenceAssistantAgentsToolContext.Default.Tools
+// also contains all tools if a single context is preferred.
+
+[AIToolSource(typeof(AgentPollTools), IncludeTools = [
+    nameof(AgentPollTools.GetPollResults), nameof(AgentPollTools.GetAllPollResults)])]
+partial class PollAnalystTools : AIToolContext { }
+
+[AIToolSource(typeof(AgentQuestionTools))]
+partial class QuestionAnalystTools : AIToolContext { }
+
+[AIToolSource(typeof(AgentInsightTools), IncludeTools = [nameof(AgentInsightTools.GetAllInsights)])]
+[AIToolSource(typeof(AgentKnowledgeTools))]
+partial class InsightAnalystTools : AIToolContext { }
 
 /// <summary>
 /// Orchestrates a fan-out/fan-in → synthesis workflow:
@@ -11,12 +27,12 @@ namespace ConferenceAssistant.Agents.Workflows;
 /// then a Synthesizer agent merges their outputs into a single session summary.
 /// The entire pipeline runs as one MAF workflow.
 /// </summary>
-public class SessionSummaryWorkflow(IChatClient chatClient, AgentTools tools)
+public class SessionSummaryWorkflow(IChatClient chatClient)
 {
     public async Task<string> ExecuteAsync()
     {
         // Three specialized analysis agents run concurrently (fan-out)
-        // Each agent gets ONLY the tools it needs
+        // Each agent gets ONLY the tools it needs via its co-located context
         ChatClientAgent pollAnalyst = new(
             chatClient,
             name: "PollAnalyst",
@@ -26,7 +42,7 @@ public class SessionSummaryWorkflow(IChatClient chatClient, AgentTools tools)
                 and its results. Summarize the key findings: which options won,
                 participation levels, and trends across polls. Be data-driven — cite percentages.
                 """,
-            tools: [tools.GetAllPollResults]);
+            tools: [.. PollAnalystTools.Default.Tools]);
 
         ChatClientAgent questionAnalyst = new(
             chatClient,
@@ -37,7 +53,7 @@ public class SessionSummaryWorkflow(IChatClient chatClient, AgentTools tools)
                 all audience questions. Identify the top themes, most-upvoted questions,
                 knowledge gaps (unanswered or high-interest questions), and overall curiosity patterns.
                 """,
-            tools: [tools.GetAudienceQuestions]);
+            tools: [.. QuestionAnalystTools.Default.Tools]);
 
         ChatClientAgent insightAnalyst = new(
             chatClient,
@@ -48,7 +64,7 @@ public class SessionSummaryWorkflow(IChatClient chatClient, AgentTools tools)
                 gather all generated insights and knowledge base content. Identify
                 overarching themes, recurring patterns, and key takeaways from the session.
                 """,
-            tools: [tools.GetAllInsights, tools.SearchKnowledge]);
+            tools: [.. InsightAnalystTools.Default.Tools]);
 
         // Synthesizer agent: receives merged outputs from the 3 analysts
         ChatClientAgent synthesizer = new(
