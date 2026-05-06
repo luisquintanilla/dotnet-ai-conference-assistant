@@ -49,7 +49,7 @@ public class SessionContext
     public void SetSlidesVisibility(bool visible)
     {
         SlidesHidden = !visible;
-        SlidesVisibilityChanged?.Invoke(!visible);
+        SlidesVisibilityChanged?.Invoke(visible);
     }
 
     public void LoadSlides(List<Slide> slides)
